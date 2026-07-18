@@ -24,8 +24,12 @@ async function bundleVirtual(plugin, code, id, moduleType) {
       plugin,
     ],
   });
-  const output = await build.generate({ format: 'esm' });
-  return output.output[0].code;
+  try {
+    const output = await build.generate({ format: 'esm' });
+    return output.output[0].code;
+  } finally {
+    await build.close();
+  }
 }
 
 test('Expose CommonJS and ESM-compatible public exports', async () => {
@@ -129,11 +133,15 @@ for (const nativeMagicString of [false, true]) {
         angularjsAnnotate(),
       ],
     });
-    const output = await build.generate({ format: 'esm', sourcemap: true });
-    assert.match(output.output[0].code, /\.run\(\["dep", function\(dep\)/);
-    assert.ok(output.output[0].map);
-    assert.equal(output.output[0].map.sources.length, 1);
-    assert.match(output.output[0].map.sources[0], /entry\.js$/);
+    try {
+      const output = await build.generate({ format: 'esm', sourcemap: true });
+      assert.match(output.output[0].code, /\.run\(\["dep", function\(dep\)/);
+      assert.ok(output.output[0].map);
+      assert.equal(output.output[0].map.sources.length, 1);
+      assert.match(output.output[0].map.sources[0], /entry\.js$/);
+    } finally {
+      await build.close();
+    }
   });
 }
 
@@ -153,6 +161,10 @@ test('Transform a framework-generated JavaScript module with a non-script ID', a
       angularjsAnnotate(),
     ],
   });
-  const output = await build.generate({ format: 'esm' });
-  assert.match(output.output[0].code, /\.run\(\["dep", function\(dep\)/);
+  try {
+    const output = await build.generate({ format: 'esm' });
+    assert.match(output.output[0].code, /\.run\(\["dep", function\(dep\)/);
+  } finally {
+    await build.close();
+  }
 });
