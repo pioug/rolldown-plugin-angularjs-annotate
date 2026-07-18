@@ -3,10 +3,11 @@
 AngularJS dependency-injection annotations for Rolldown, without a Babel
 transform layer.
 
-The annotator is behaviorally compatible with the active fixture suite from
-`babel-plugin-angularjs-annotate@0.10.0`: all 131 fixtures across its 11 suites,
-including context-sensitive negative cases and `explicitOnly`, run directly
-against this implementation.
+This package ports the supported annotation behavior of
+`babel-plugin-angularjs-annotate@0.10.0` to Rolldown. Its complete active corpus
+of 131 fixtures across 11 suites is checked in the upstream project's enabled
+original-source and Babel-transpiled ES5 modes, including context-sensitive
+negative cases and `explicitOnly`.
 
 ## Install
 
@@ -48,9 +49,9 @@ angularjsAnnotate({
 | `include` | String glob, `RegExp`, or array of either. Defaults to JavaScript/TypeScript IDs and modules Rolldown identifies as JavaScript/TypeScript, including framework-generated virtual modules. |
 | `exclude` | String glob, `RegExp`, or array of either. Defaults to `node_modules` and Rolldown's runtime module. |
 | `explicitOnly` | When `true`, only `@ngInject`, `ngInject`, and their no-inject counterparts are considered. |
-| `regexp` | Restricts implicit short module receivers such as `app.controller(...)`. The compatibility default accepts identifier and dotted-property forms. |
+| `regexp` | Restricts source expressions accepted as implicit module receivers, such as `app` or `require("app-module")`. Explicit `angular.module(...)` chains remain recognized. The compatibility default accepts identifier and dotted-property forms. |
 
-Use `regexp: '^$'` to disable implicit short forms while retaining explicit
+Use `regexp: '^$'` to disable implicit receiver matching while retaining explicit
 `angular.module(...)` chains.
 
 ## Supported annotations
@@ -96,7 +97,10 @@ annotate(program, code, magicString, {
 
 The `comments` array is optional; the core has a source-based fallback for
 native Rolldown ASTs. Public TypeScript declarations cover both the plugin and
-the low-level API.
+the low-level API. `onWarn` receives a message and, when available, a diagnostic
+with zero-based `start` and `end` source offsets. The plugin wrapper forwards
+these as structured Rolldown warnings with the module ID and source position;
+annotation and parser failures similarly use Rolldown's structured error API.
 
 ## Verification
 
@@ -104,10 +108,13 @@ the low-level API.
 npm run check
 ```
 
-The suite includes the upstream compatibility corpus, safety regressions, a
-minified AngularJS `strictDi` bootstrap, source maps, filters, TypeScript/Vue
-module IDs, framework-generated modules with non-script IDs, package consumer
-types, and real Rolldown builds with native MagicString both disabled and enabled.
+The suite includes 508 semantic comparisons against the upstream compatibility
+corpus, safety regressions, a minified AngularJS `strictDi` bootstrap, source
+maps, filters, TypeScript/Vue module IDs, framework-generated modules with
+non-script IDs, package consumer types, and real Rolldown builds with native
+MagicString both disabled and enabled. Babel is a development-only fixture
+preprocessor for the ES5 compatibility lane; published transforms use
+Rolldown's parser and do not add a Babel transform layer.
 
 ## License
 

@@ -16,7 +16,7 @@ declare namespace angularjsAnnotate {
     exclude?: FilterPattern;
     /** Disable all implicit AngularJS pattern matching. */
     explicitOnly?: boolean;
-    /** Restrict implicit short-form module receivers such as `app.controller(...)`. */
+    /** Restrict source expressions accepted as implicit AngularJS module receivers. */
     regexp?: string | RegExp;
   }
 
@@ -27,11 +27,20 @@ declare namespace angularjsAnnotate {
     end: number;
   }
 
+  interface AnnotateDiagnostic {
+    /** Stable diagnostic identifier suitable for filtering build logs. */
+    code?: string;
+    /** Zero-based source offsets when the diagnostic is tied to syntax. */
+    start?: number;
+    end?: number;
+  }
+
   interface AnnotateOptions {
     comments?: readonly ParserComment[] | null;
     explicitOnly?: boolean;
     regexp?: string | RegExp;
-    onWarn?: (message: string) => void;
+    /** Receives the message and, when available, its source span. */
+    onWarn?: (message: string, diagnostic?: AnnotateDiagnostic) => void;
   }
 
   function annotate(

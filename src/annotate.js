@@ -17,9 +17,11 @@ const AMBIGUOUS_WRITE_ANCESTORS = new Set([
   'ForStatement', 'IfStatement', 'LogicalExpression', 'SwitchCase', 'TryStatement', 'WhileStatement'
 ]);
 const WRAPPER_TYPES = new Set([
-  'ParenthesizedExpression', 'TSAsExpression', 'TSInstantiationExpression', 'TSNonNullExpression',
+  'ChainExpression', 'ParenthesizedExpression', 'TSAsExpression', 'TSInstantiationExpression', 'TSNonNullExpression',
   'TSSatisfiesExpression', 'TSTypeAssertion'
 ]);
+const AMD_LOADER_NAMES = new Set(['define', 'require', 'requirejs']);
+const ANNOTATION_WRAPPER_NAMES = new Set(['ngInject', 'ngNoInject']);
 const DEFAULT_MODULE_REGEXP = /^[a-zA-Z0-9_$\.\s]+$/;
 
 module.exports = function annotate(program, code, magicString, options = {}) {
@@ -43,8 +45,10 @@ class Annotator {
     this.functionScopes = new WeakMap();
     this.bindingByValue = new WeakMap();
     this.bindingByDeclaration = new WeakMap();
+    this.regularInfoCache = new WeakMap();
 
     this.explicitActions = [];
+    this.suppressedFunctionDirectives = new WeakSet();
     this.blockedNodes = new WeakSet();
     this.blockedBindings = new Set();
     this.blockedWrites = new Set();
@@ -246,6 +250,7 @@ class Annotator {
       binding = { name, value: null, declaration: null, kind, scope, statement: null, writes: [], unknownWrites: [] };
       scope.bindings.set(name, binding);
     }
+    if (declaration && !binding.declaration) binding.declaration = declaration;
     if (value) this.addBindingWrite(binding, value, declaration, kind, kind === 'hoisted');
     if (declaration) this.bindingByDeclaration.set(declaration, binding);
     return binding;
@@ -386,6 +391,10 @@ class Annotator {
     for (const write of binding.writes) {
       if (write.start <= reference.start && (!effective || write.start >= effective.start)) effective = write;
     }
+    if (!effective && binding.writes.length === 1 && referenceFunction !== bindingFunction) {
+      const future = binding.writes[0];
+      if (['class', 'const', 'let', 'var'].includes(future.kind) && !future.ambiguous) effective = future;
+    }
     if (!effective || effective.ambiguous) return null;
     return this.bindingView(binding, effective);
   }
@@ -418,25 +427,40 @@ class Annotator {
       const annotation = commentAnnotation(comment.value);
       if (annotation == null) continue;
       const node = this.nextAnnotatedNode(comment, candidates);
-      const target = node && this.normalizeExplicitNode(node);
-      if (target) this.explicitActions.push({ node: target, annotate: annotation });
+      if (!annotation && node?.type === 'VariableDeclaration' && node.declarations.length !== 1) {
+        for (const declaration of node.declarations) {
+          const value = unwrap(declaration.init);
+          if (isFunction(value)) this.suppressedFunctionDirectives.add(value);
+          if (isClass(value)) {
+            for (const element of value.body?.body || []) {
+              if (element.type === 'MethodDefinition' && element.kind === 'constructor' && isFunction(element.value)) {
+                this.suppressedFunctionDirectives.add(element.value);
+              }
+            }
+          }
+        }
+      }
+      const targets = node ? this.normalizeExplicitNodes(node) : [];
+      for (const target of targets) this.explicitActions.push({ node: target, annotate: annotation });
     }
 
     for (const node of this.nodes) {
       if (isFunction(node)) {
         const directive = functionDirective(node);
-        if (directive != null) {
+        if (directive != null && !this.suppressedFunctionDirectives.has(node)) {
           let target = node;
           const parent = this.parents.get(node);
-          if (parent?.type === 'MethodDefinition' && parent.kind === 'constructor') {
+          if (parent?.type === 'Property' && (parent.kind === 'get' || parent.kind === 'set')) continue;
+          if (parent?.type === 'MethodDefinition') {
+            if (parent.kind !== 'constructor') continue;
             target = this.findAncestor(parent, isClass) || node;
           }
           this.explicitActions.push({ node: target, annotate: directive });
         }
       }
-      if (node.type === 'CallExpression' && node.callee?.type === 'Identifier' &&
-          (node.callee.name === 'ngInject' || node.callee.name === 'ngNoInject') && node.arguments.length === 1) {
-        this.explicitActions.push({ node: node.arguments[0], annotate: node.callee.name === 'ngInject' });
+      const wrapper = annotationWrapperName(node);
+      if (wrapper) {
+        this.explicitActions.push({ node: node.arguments[0], annotate: wrapper === 'ngInject' });
       }
     }
   }
@@ -472,12 +496,18 @@ class Annotator {
     return true;
   }
 
-  normalizeExplicitNode(node) {
-    if (node.type === 'ExportDefaultDeclaration' || node.type === 'ExportNamedDeclaration') return node.declaration || node;
-    if (node.type === 'VariableDeclaration' && node.declarations.length !== 1) return null;
-    if (node.type === 'ExpressionStatement') return node.expression;
-    if (node.type === 'MethodDefinition' && node.kind === 'constructor') return this.findAncestor(node, isClass) || node;
-    return node;
+  normalizeExplicitNodes(node) {
+    if (node.type === 'ExportDefaultDeclaration' || node.type === 'ExportNamedDeclaration') {
+      const declaration = node.declaration || node;
+      if (declaration.type === 'VariableDeclaration' && declaration.declarations.length !== 1) return [];
+      return [declaration];
+    }
+    if (node.type === 'VariableDeclaration' && node.declarations.length !== 1) {
+      return node.declarations.map(declaration => unwrap(declaration.init)).filter(value => value?.type === 'ObjectExpression');
+    }
+    if (node.type === 'ExpressionStatement') return [node.expression];
+    if (node.type === 'MethodDefinition' && node.kind === 'constructor') return [this.findAncestor(node, isClass) || node];
+    return [node];
   }
 
   blockTarget(input, seen = new WeakSet()) {
@@ -508,9 +538,9 @@ class Annotator {
       this.blockTarget(node.right, seen);
       return;
     }
-    if (node.type === 'ConditionalExpression' || node.type === 'LogicalExpression') {
-      this.blockTarget(node.type === 'ConditionalExpression' ? node.consequent : node.left, seen);
-      this.blockTarget(node.type === 'ConditionalExpression' ? node.alternate : node.right, seen);
+    const branches = branchExpressions(node);
+    if (branches) {
+      for (const branch of branches) this.blockTarget(branch, seen);
       return;
     }
     if (node.type === 'ArrayExpression') {
@@ -533,7 +563,7 @@ class Annotator {
       return;
     }
     if (node.type === 'CallExpression') {
-      if (node.callee?.type === 'Identifier' && (node.callee.name === 'ngInject' || node.callee.name === 'ngNoInject') && node.arguments[0]) {
+      if (annotationWrapperName(node)) {
         this.blockTarget(node.arguments[0], seen);
         return;
       }
@@ -559,8 +589,7 @@ class Annotator {
   }
 
   regularInfo(call, stack = new WeakSet()) {
-    if (this.regularInfoCache?.has(call)) return this.regularInfoCache.get(call);
-    if (!this.regularInfoCache) this.regularInfoCache = new WeakMap();
+    if (this.regularInfoCache.has(call)) return this.regularInfoCache.get(call);
     if (!isNode(call) || call.type !== 'CallExpression' || stack.has(call)) return null;
     stack.add(call);
 
@@ -570,16 +599,18 @@ class Annotator {
       return null;
     }
     const method = staticPropertyName(callee);
+    const object = unwrap(callee.object);
 
-    if (method === 'module' && callee.object?.type === 'Identifier' && callee.object.name === 'angular' && this.isAngularReference(callee.object)) {
+    if (method === 'module' && object?.type === 'Identifier' && this.isAngularReference(object)) {
       const info = { chain: true, method: 'module', target: call.arguments.length >= 2 ? call.arguments[call.arguments.length - 1] : null };
       this.regularInfoCache.set(call, info);
       return info;
     }
 
-    const object = unwrap(callee.object);
     let isModule = false;
-    if (object?.type === 'CallExpression') isModule = Boolean(this.regularInfo(object, stack)?.chain);
+    if (object?.type === 'CallExpression') {
+      isModule = Boolean(this.regularInfo(object, stack)?.chain) || this.matchesModuleExpression(object);
+    }
     else if (object && this.matchesModuleExpression(object)) isModule = true;
     if (!isModule || (!REGISTRATION_METHODS.has(method) && !CHAIN_ONLY_METHODS.has(method))) {
       this.regularInfoCache.set(call, null);
@@ -618,18 +649,123 @@ class Annotator {
     return result;
   }
 
-  isAngularReference(identifier) {
+  isAngularReference(identifier, trail = new Set()) {
     const binding = this.bindingFor(identifier);
-    if (!binding) return true;
+    if (!binding) return identifier.name === 'angular';
+    const baseBinding = binding.baseBinding || binding;
+    if (trail.has(baseBinding)) return false;
+    trail.add(baseBinding);
     if (binding.kind === 'import') {
       const declaration = this.parents.get(binding.declaration);
-      return declaration?.type === 'ImportDeclaration' && declaration.source?.value === 'angular';
+      if (declaration?.type !== 'ImportDeclaration' || declaration.source?.value !== 'angular') return false;
+      if (binding.declaration.type === 'ImportDefaultSpecifier' || binding.declaration.type === 'ImportNamespaceSpecifier') return true;
+      const imported = binding.declaration.imported;
+      return binding.declaration.type === 'ImportSpecifier' && (imported?.name === 'default' || imported?.value === 'default');
     }
+    const declaration = this.parents.get(binding.declaration);
+    if (identifier.name === 'angular' && declaration?.type === 'VariableDeclaration' && declaration.declare) return true;
+    if (this.isDestructuredAngularBinding(binding)) return true;
+    if (this.isAmdAngularParameter(binding)) return true;
+    if (this.isIifeAngularParameter(binding, trail)) return true;
     const effective = this.effectiveBinding(binding, identifier);
-    const value = unwrap(effective?.value);
+    return this.isAngularValue(effective?.value, trail);
+  }
+
+  isAngularValue(input, trail) {
+    const value = unwrap(input);
+    if (!value) return false;
+    if (this.isDirectAngularRequire(value)) return true;
+    if (value.type === 'MemberExpression') {
+      const object = unwrap(value.object);
+      const property = staticPropertyName(value);
+      if (property === 'default' && (this.isDirectAngularRequire(object) ||
+          (object?.type === 'Identifier' && this.isAngularReference(object, trail)))) return true;
+      if (property === 'angular' && object?.type === 'Identifier' &&
+          ['window', 'globalThis'].includes(object.name) && !this.bindingFor(object)) return true;
+    }
+    if (value.type === 'Identifier') return this.isAngularReference(value, trail);
+    return false;
+  }
+
+  isDirectAngularRequire(value) {
+    value = unwrap(value);
     return value?.type === 'CallExpression' && value.callee?.type === 'Identifier' &&
       value.callee.name === 'require' && !this.bindingFor(value.callee) &&
-      value.arguments.length === 1 && value.arguments[0]?.type === 'Literal' && value.arguments[0].value === 'angular';
+      value.arguments.length === 1 && isStringLiteral(value.arguments[0]) && value.arguments[0].value === 'angular';
+  }
+
+  isDestructuredAngularBinding(binding) {
+    const declaration = binding.declaration;
+    if (declaration?.type !== 'VariableDeclarator') return false;
+    const pattern = unwrap(declaration.id);
+    if (pattern?.type !== 'ObjectPattern') return false;
+    const source = unwrap(declaration.init);
+    const propertyName = this.isDirectAngularRequire(source) ? 'default' :
+      (source?.type === 'Identifier' && ['window', 'globalThis'].includes(source.name) && !this.bindingFor(source) ? 'angular' : null);
+    if (!propertyName) return false;
+    return pattern.properties.some(property => property.type === 'Property' && staticPropertyName(property) === propertyName &&
+      parameterName(property.value) === binding.name);
+  }
+
+  isIifeAngularParameter(binding, trail) {
+    if (binding.kind !== 'param') return false;
+    const callback = binding.scope?.node;
+    if (!isFunction(callback)) return false;
+    const runtimeIndex = runtimeParameterIndex(callback.params, binding.name);
+    if (runtimeIndex < 0) return false;
+    let parent = this.parents.get(callback);
+    let child = callback;
+    while (parent && WRAPPER_TYPES.has(parent.type) && parent.expression === child) {
+      child = parent;
+      parent = this.parents.get(parent);
+    }
+    if (parent?.type !== 'CallExpression' || unwrap(parent.callee) !== callback) return false;
+    return this.isAngularValue(parent.arguments[runtimeIndex], trail);
+  }
+
+  isAmdAngularParameter(binding) {
+    if (binding.kind !== 'param') return false;
+    const callback = binding.scope?.node;
+    if (!isFunction(callback)) return false;
+    const runtimeIndex = runtimeParameterIndex(callback.params, binding.name);
+    if (runtimeIndex < 0) return false;
+
+    let parent = this.parents.get(callback);
+    let child = callback;
+    while (parent && WRAPPER_TYPES.has(parent.type) && parent.expression === child) {
+      child = parent;
+      parent = this.parents.get(parent);
+    }
+    if (parent?.type === 'CallExpression') {
+      const callbackIndex = parent.arguments.findIndex(argument => unwrap(argument) === callback || argument === child);
+      if (this.isAmdAngularArgument(parent, callbackIndex, runtimeIndex)) return true;
+    }
+
+    for (const call of this.calls) {
+      const callee = unwrap(call.callee);
+      if (callee?.type !== 'Identifier' || !AMD_LOADER_NAMES.has(callee.name) || this.bindingFor(callee)) continue;
+      const callbackIndex = call.arguments.findIndex(argument => {
+        const reference = unwrap(argument);
+        if (reference?.type !== 'Identifier') return false;
+        const effective = this.effectiveBinding(this.bindingFor(reference), reference);
+        return unwrap(effective?.value) === callback;
+      });
+      if (this.isAmdAngularArgument(call, callbackIndex, runtimeIndex)) return true;
+    }
+    return false;
+  }
+
+  isAmdAngularArgument(call, callbackIndex, parameterIndex) {
+    if (callbackIndex < 0) return false;
+    const callee = unwrap(call.callee);
+    if (callee?.type !== 'Identifier' || !AMD_LOADER_NAMES.has(callee.name) || this.bindingFor(callee)) return false;
+    for (let index = callbackIndex - 1; index >= 0; index--) {
+      const dependencies = this.resolveValue(call.arguments[index], new WeakSet());
+      if (dependencies?.type === 'ArrayExpression') {
+        return dependencies.elements[parameterIndex]?.value === 'angular';
+      }
+    }
+    return false;
   }
 
   collectContextualTargets() {
@@ -735,21 +871,22 @@ class Annotator {
     }
     if (node.type === 'Identifier') {
       const binding = this.effectiveBinding(this.bindingFor(node), node);
-      if (!binding || this.blockedBindings.has(binding.baseBinding || binding) || !binding.value) return;
+      if (!binding || !binding.value) return;
+      if (this.blockedBindings.has(binding.baseBinding || binding)) {
+        this.processBlockedMethodContext(binding.value, info.method);
+        return;
+      }
       this.markContext(binding.value);
       this.processTarget(binding.value, info, trail, binding);
       return;
     }
-    if (node.type === 'ConditionalExpression') {
-      if (bindingHint && unwrap(bindingHint.value) === node) return;
-      this.processTarget(node.consequent, info, trail, bindingHint);
-      this.processTarget(node.alternate, info, trail, bindingHint);
-      return;
-    }
-    if (node.type === 'LogicalExpression') {
-      if (bindingHint && unwrap(bindingHint.value) === node) return;
-      this.processTarget(node.left, info, trail, bindingHint);
-      this.processTarget(node.right, info, trail, bindingHint);
+    const branches = branchExpressions(node);
+    if (branches) {
+      if (bindingHint && unwrap(bindingHint.value) === node) {
+        this.processBlockedMethodContext(node, info.method);
+        return;
+      }
+      for (const branch of branches) this.processTarget(branch, info, trail, bindingHint);
       return;
     }
     if (node.type === 'AssignmentExpression') {
@@ -758,8 +895,12 @@ class Annotator {
       return;
     }
     if (node.type === 'CallExpression') {
-      if (node.callee?.type === 'Identifier' && (node.callee.name === 'ngInject' || node.callee.name === 'ngNoInject') && node.arguments.length === 1) {
-        if (node.callee.name === 'ngNoInject') return;
+      const wrapper = annotationWrapperName(node);
+      if (wrapper) {
+        if (wrapper === 'ngNoInject') {
+          this.processBlockedMethodContext(node.arguments[0], info.method);
+          return;
+        }
         this.processTarget(node.arguments[0], { ...info, explicit: true }, trail, bindingHint);
         return;
       }
@@ -775,13 +916,15 @@ class Annotator {
         this.processMethodContext(target, info.method);
       } else if (returned?.type === 'Identifier') {
         this.processTarget(returned, info, trail, null);
-      } else if (returned && !bindingHint) {
-        this.processTarget(returned, info, trail, null);
+      } else if (returned) {
+        if (bindingHint) this.processBlockedMethodContext(returned, info.method);
+        else this.processTarget(returned, info, trail, null);
       }
       return;
     }
     if (node.type === 'ArrayExpression') {
       this.validateAnnotatedArray(node, info);
+      this.processBlockedMethodContext(node.elements[node.elements.length - 1], info.method);
       return;
     }
     if (node.type === 'ObjectExpression') {
@@ -796,10 +939,56 @@ class Annotator {
     if (!isFunction(node) && !isClass(node)) return;
 
     const binding = bindingHint || this.bindingForValue(node) || null;
-    if (this.isBlocked(node, binding)) return;
+    const annotatedParent = this.annotatedArrayParent(node);
+    if (annotatedParent && info.explicit) this.validateAnnotatedArray(annotatedParent, info);
+    if (this.isBlocked(node, binding)) {
+      this.processBlockedMethodContext(node, info.method);
+      return;
+    }
     this.markContext(node);
     this.planAnnotation(node, binding, info);
     this.processMethodContext(node, info.method);
+  }
+
+  processBlockedMethodContext(input, method, trail = new WeakSet()) {
+    let node = unwrap(input);
+    if (!method || !isNode(node) || trail.has(node)) return;
+    trail.add(node);
+
+    if (node.type === 'Identifier') {
+      const binding = this.effectiveBinding(this.bindingFor(node), node);
+      if (binding?.value) this.processBlockedMethodContext(binding.value, method, trail);
+      return;
+    }
+    if (node.type === 'ArrayExpression') {
+      this.processBlockedMethodContext(node.elements[node.elements.length - 1], method, trail);
+      return;
+    }
+    const branches = branchExpressions(node);
+    if (branches) {
+      for (const branch of branches) this.processBlockedMethodContext(branch, method, trail);
+      return;
+    }
+    if (node.type === 'AssignmentExpression') {
+      this.processBlockedMethodContext(node.right, method, trail);
+      return;
+    }
+    if (node.type === 'SequenceExpression') {
+      this.processBlockedMethodContext(node.expressions[node.expressions.length - 1], method, trail);
+      return;
+    }
+    if (node.type === 'CallExpression') {
+      if (annotationWrapperName(node)) {
+        this.processBlockedMethodContext(node.arguments[0], method, trail);
+        return;
+      }
+      const returned = this.iifeReturn(node);
+      if (returned) this.processBlockedMethodContext(returned, method, trail);
+      return;
+    }
+    if (!isFunction(node) && !isClass(node) && node.type !== 'ObjectExpression') return;
+    this.markContext(node);
+    this.processMethodContext(node, method);
   }
 
   processMethodContext(node, method) {
@@ -832,17 +1021,49 @@ class Annotator {
   }
 
   scanDirective(root) {
+    this.scanDirectiveFunction(root, new WeakSet());
+  }
+
+  scanDirectiveFunction(root, trail) {
+    root = unwrap(root);
+    if (!isFunction(root) || trail.has(root)) return;
+    trail.add(root);
     if (root.type === 'ArrowFunctionExpression' && root.body?.type !== 'BlockStatement') {
-      this.processDirectiveObject(root.body);
+      this.processDirectiveReturn(root.body, trail);
       return;
     }
     const visit = node => {
       if (!isNode(node)) return;
       if (node !== root && (isFunction(node) || isClass(node))) return;
-      if (node.type === 'ReturnStatement' && node.argument) this.processDirectiveObject(node.argument);
+      if (node.type === 'ReturnStatement' && node.argument) this.processDirectiveReturn(node.argument, trail);
       forEachChild(node, visit);
     };
     visit(root);
+  }
+
+  processDirectiveReturn(input, trail) {
+    const node = unwrap(input);
+    if (!isNode(node)) return;
+    const branches = branchExpressions(node);
+    if (branches) {
+      for (const branch of branches) this.processDirectiveReturn(branch, trail);
+      return;
+    }
+    if (node.type === 'CallExpression') {
+      const returned = this.iifeReturn(node);
+      if (returned) {
+        this.processDirectiveReturn(returned, trail);
+        return;
+      }
+      const callee = lastSequenceExpression(node.callee);
+      if (callee?.type === 'Identifier') {
+        const binding = this.effectiveBinding(this.bindingFor(callee), callee);
+        const helper = this.resolveValue(binding?.value, new WeakSet());
+        if (isFunction(helper)) this.scanDirectiveFunction(helper, trail);
+      }
+      return;
+    }
+    this.processDirectiveObject(node);
   }
 
   processDirectiveObject(input) {
@@ -981,20 +1202,39 @@ class Annotator {
     const dependencies = isClass(target) ? classDependencies(target) : functionDependencies(target);
     if (!dependencies) return;
     if (annotations.length < dependencies.length) {
-      throw new Error('[angularjs-annotate] Function parameters do not match existing annotations.');
+      const error = new Error('[angularjs-annotate] Function parameters do not match existing annotations.');
+      error.code = 'ANNOTATION_MISMATCH';
+      error.start = node.start;
+      error.end = node.end;
+      throw error;
     }
     const mismatch = dependencies.findIndex((dependency, index) => annotations[index]?.value !== dependency);
     if (mismatch >= 0 && typeof this.options.onWarn === 'function') {
-      this.options.onWarn('[angularjs-annotate] Function parameters do not match existing annotations.');
+      const location = annotations[mismatch] || node;
+      this.options.onWarn('[angularjs-annotate] Function parameters do not match existing annotations.', {
+        code: 'ANNOTATION_MISMATCH',
+        start: location.start,
+        end: location.end,
+      });
     }
+  }
+
+  annotatedArrayParent(node) {
+    let current = node;
+    let parent = this.parents.get(current);
+    while (parent && WRAPPER_TYPES.has(parent.type) && parent.expression === current) {
+      current = parent;
+      parent = this.parents.get(current);
+    }
+    if (parent?.type !== 'ArrayExpression' || unwrap(parent.elements[parent.elements.length - 1]) !== node) return null;
+    return isAnnotatedArray(parent) ? parent : null;
   }
 
   isBlocked(node, binding) {
     const baseBinding = binding?.baseBinding || binding;
     if (this.blockedNodes.has(node) || (baseBinding && this.blockedBindings.has(baseBinding))) return true;
     if (binding?.write && this.blockedWrites.has(binding.write)) return true;
-    const parent = this.parents.get(node);
-    if (parent?.type === 'ArrayExpression' && parent.elements[parent.elements.length - 1] === node && isAnnotatedArray(parent)) return true;
+    if (this.annotatedArrayParent(node)) return true;
     return false;
   }
 
@@ -1086,7 +1326,16 @@ class Annotator {
   planBindingInjection(binding, dependencies) {
     const text = `${binding.name}.$inject = ${dependencyArray(dependencies)};`;
     if (binding.value?.type === 'FunctionDeclaration') {
-      const position = scopeInsertionPosition(binding.scope, this.code);
+      let position = scopeInsertionPosition(binding.scope);
+      const statements = binding.scope?.body?.body || [];
+      if (statements.length === 0 || directiveValue(statements[0]) == null) {
+        const marker = this.comments.find(comment => comment.end <= position &&
+          commentAnnotation(comment.value) != null && this.isTrivia(comment.end, position));
+        if (marker) {
+          const leadingComment = this.comments.find(comment => comment.end <= position && this.isTrivia(comment.end, position));
+          position = leadingComment?.start ?? marker.start;
+        }
+      }
       if (position != null) this.planBefore(position, text);
       else if (binding.statement) this.planAfter(binding.statement.end, text);
       return;
@@ -1185,6 +1434,24 @@ function nearestFunctionScope(scope) {
   return scope;
 }
 
+function branchExpressions(node) {
+  if (node?.type === 'ConditionalExpression') return [node.consequent, node.alternate];
+  if (node?.type === 'LogicalExpression') return [node.left, node.right];
+  return null;
+}
+
+function annotationWrapperName(node) {
+  if (node?.type !== 'CallExpression' || node.arguments.length !== 1) return null;
+  const callee = unwrap(node.callee);
+  return callee?.type === 'Identifier' && ANNOTATION_WRAPPER_NAMES.has(callee.name) ? callee.name : null;
+}
+
+function lastSequenceExpression(input) {
+  let node = unwrap(input);
+  while (node?.type === 'SequenceExpression') node = unwrap(node.expressions[node.expressions.length - 1]);
+  return node;
+}
+
 function scopeInsertionPosition(scope) {
   const body = scope?.body;
   if (!body || (body.type !== 'Program' && body.type !== 'BlockStatement' && body.type !== 'StaticBlock')) return null;
@@ -1243,6 +1510,7 @@ function explicitPriority(node) {
   if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') return 2;
   if (node.type === 'MethodDefinition' || node.type === 'Property') return 3;
   if (node.type === 'ObjectExpression') return 4;
+  if (WRAPPER_TYPES.has(node.type)) return 5;
   if (node.type === 'CallExpression') return 5;
   if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression' || node.type === 'ClassExpression') return 6;
   if (node.type === 'Identifier') return 7;
@@ -1269,14 +1537,15 @@ function functionDirective(node) {
 
 function directiveValue(statement) {
   if (statement?.type !== 'ExpressionStatement') return null;
-  const expression = unwrap(statement.expression);
+  const expression = statement.expression;
   return expression?.type === 'Literal' && typeof expression.value === 'string' ? expression.value : null;
 }
 
 function functionDependencies(node) {
   if (!isFunction(node)) return null;
   const result = [];
-  for (const parameter of node.params || []) {
+  for (const [index, parameter] of (node.params || []).entries()) {
+    if (index === 0 && isTypeScriptThisParameter(parameter)) continue;
     const name = parameterName(parameter);
     if (!name) return null;
     result.push(name);
@@ -1286,16 +1555,36 @@ function functionDependencies(node) {
 
 function classDependencies(node) {
   if (!isClass(node)) return null;
-  const constructor = node.body?.body?.find(item => item.type === 'MethodDefinition' && item.kind === 'constructor');
+  const constructor = node.body?.body?.find(item => item.type === 'MethodDefinition' &&
+    item.kind === 'constructor' && isFunction(item.value) && item.value.body?.type === 'BlockStatement');
   return constructor ? functionDependencies(constructor.value) : [];
 }
 
-function parameterName(parameter) {
+function unwrapParameter(parameter) {
   parameter = unwrap(parameter);
   while (parameter?.type === 'AssignmentPattern' || parameter?.type === 'RestElement' || parameter?.type === 'TSParameterProperty') {
     parameter = unwrap(parameter.left || parameter.argument || parameter.parameter);
   }
+  return parameter;
+}
+
+function isTypeScriptThisParameter(parameter) {
+  parameter = unwrapParameter(parameter);
+  return parameter?.type === 'Identifier' && parameter.name === 'this' && Boolean(parameter.typeAnnotation);
+}
+
+function parameterName(parameter) {
+  parameter = unwrapParameter(parameter);
   return parameter?.type === 'Identifier' ? parameter.name : null;
+}
+
+function runtimeParameterIndex(parameters, bindingName) {
+  let runtimeIndex = 0;
+  for (const parameter of parameters || []) {
+    if (parameterName(parameter) === bindingName) return runtimeIndex;
+    if (!isTypeScriptThisParameter(parameter)) runtimeIndex++;
+  }
+  return -1;
 }
 
 function dependencyArray(dependencies) {

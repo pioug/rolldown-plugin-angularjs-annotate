@@ -1,8 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const babel = require('@babel/core');
 const MagicString = require('magic-string');
-const { minifySync, parseSync } = require('rolldown/utils');
+const { parseSync } = require('rolldown/utils');
 const annotate = require('../src/annotate');
+
+const ES5_PRESETS = [
+  [require.resolve('@babel/preset-env'), { exclude: ['transform-function-name'] }],
+];
 
 const FIXTURE_ROOT = 'babel-plugin-angularjs-annotate/tests';
 const SUITES = [
@@ -22,6 +27,16 @@ const SUITES = [
 test('Load the complete active upstream fixture corpus', () => {
   assert.equal(SUITES.length, 11);
   assert.equal(SUITES.reduce((count, suite) => count + suite.tests.length, 0), 131);
+  assert.equal(SUITES.reduce((count, suite) => count + suite.tests.reduce((suiteCount, fixture) => {
+    const cases = fixture.contextDependent ? 2 : 1;
+    const explicitOnly = !fixture.contextDependent && (fixture.explicit || fixture.implicit) ? 1 : 0;
+    return suiteCount + (cases + explicitOnly) * Number(!fixture.noES6);
+  }, 0), 0), 258);
+  assert.equal(SUITES.reduce((count, suite) => count + suite.tests.reduce((suiteCount, fixture) => {
+    const cases = fixture.contextDependent ? 2 : 1;
+    const explicitOnly = !fixture.contextDependent && (fixture.explicit || fixture.implicit) ? 1 : 0;
+    return suiteCount + (cases + explicitOnly) * Number(!fixture.noES5);
+  }, 0), 0), 250);
 });
 
 function transform(code, options = {}) {
@@ -32,8 +47,21 @@ function transform(code, options = {}) {
   return magicString.toString();
 }
 
-function compact(code) {
-  return minifySync('fixture.js', code, { compress: false, mangle: false }).code;
+function compile(code, presets) {
+  return babel.transformSync(code, {
+    babelrc: false,
+    configFile: false,
+    compact: true,
+    comments: true,
+    presets,
+  }).code.trim().replace(/\n/g, '');
+}
+
+function modesFor(fixture) {
+  const modes = [];
+  if (!fixture.noES5) modes.push({ name: 'ES5', presets: ES5_PRESETS });
+  if (!fixture.noES6) modes.push({ name: 'ES2015', presets: [] });
+  return modes;
 }
 
 function functionBody(value) {
@@ -72,26 +100,31 @@ function casesFor(fixture) {
 for (const suite of SUITES) {
   test(suite.name, async t => {
     for (const fixture of suite.tests) {
-      for (const fixtureCase of casesFor(fixture)) {
-        await t.test(fixtureCase.name, () => {
-          assert.equal(compact(transform(fixtureCase.input)), compact(fixtureCase.expected));
-        });
-      }
+      for (const mode of modesFor(fixture)) {
+        for (const fixtureCase of casesFor(fixture)) {
+          await t.test(`${mode.name}: ${fixtureCase.name}`, () => {
+            assert.equal(
+              compile(transform(fixtureCase.input), mode.presets),
+              compile(fixtureCase.expected, mode.presets),
+            );
+          });
+        }
 
-      if (fixture.explicit && !fixture.contextDependent) {
-        await t.test(`${fixture.name} - explicitOnly`, () => {
-          assert.equal(
-            compact(transform(functionBody(fixture.input), { explicitOnly: true })),
-            compact(functionBody(fixture.expected)),
-          );
-        });
-      }
+        if (fixture.explicit && !fixture.contextDependent) {
+          await t.test(`${mode.name} explicitOnly: ${fixture.name}`, () => {
+            assert.equal(
+              compile(transform(functionBody(fixture.input), { explicitOnly: true }), mode.presets),
+              compile(functionBody(fixture.expected), mode.presets),
+            );
+          });
+        }
 
-      if (fixture.implicit && !fixture.contextDependent) {
-        await t.test(`${fixture.name} - explicitOnly`, () => {
-          const input = functionBody(fixture.input);
-          assert.equal(compact(transform(input, { explicitOnly: true })), compact(input));
-        });
+        if (fixture.implicit && !fixture.contextDependent) {
+          await t.test(`${mode.name} explicitOnly: ${fixture.name}`, () => {
+            const input = functionBody(fixture.input);
+            assert.equal(compile(transform(input, { explicitOnly: true }), mode.presets), compile(input, mode.presets));
+          });
+        }
       }
     }
   });
