@@ -38,7 +38,7 @@
   "scripts": {
     "test": "node --test",
     "test:parity": "node --test test/parity.test.js",
-    "test:unit": "node --test test/annotate.test.js test/plugin.test.js",
+    "test:unit": "node --test test/annotate.test.js test/angular-aliases.test.js test/binding-resolution.test.js test/markers.test.js test/nested-targets.test.js test/plugin.test.js test/typescript.test.js",
     "typecheck": "tsc -p type-tests/tsconfig.json",
     "lint:package": "publint && attw --pack . --profile node16",
     "check": "npm run typecheck && npm test && npm run lint:package",
