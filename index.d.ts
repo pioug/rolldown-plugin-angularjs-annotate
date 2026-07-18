@@ -3,13 +3,13 @@ import type { Plugin, RolldownMagicString } from 'rolldown';
 import type { ESTree } from 'rolldown/utils';
 
 declare function angularjsAnnotate(
-  options?: angularjsAnnotate.AngularjsAnnotateOptions,
+  options?: angularjsAnnotate.AngularJSAnnotateOptions,
 ): Plugin;
 
 declare namespace angularjsAnnotate {
   type FilterPattern = string | RegExp | readonly (string | RegExp)[];
 
-  interface AngularjsAnnotateOptions {
+  interface AngularJSAnnotateOptions {
     /** Module IDs transformed by the plugin. */
     include?: FilterPattern;
     /** Module IDs omitted by the plugin. */
@@ -21,7 +21,7 @@ declare namespace angularjsAnnotate {
   }
 
   interface ParserComment {
-    type: 'Block' | 'Line' | string;
+    type: string;
     value: string;
     start: number;
     end: number;
@@ -51,7 +51,7 @@ declare namespace angularjsAnnotate {
   ): void;
 
   const angularjsAnnotate: (
-    options?: AngularjsAnnotateOptions,
+    options?: AngularJSAnnotateOptions,
   ) => Plugin;
 }
 
