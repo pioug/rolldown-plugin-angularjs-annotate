@@ -1,0 +1,16 @@
+This project includes an independent ESTree/MagicString adaptation of matching
+behavior and tests from:
+
+- babel-plugin-angularjs-annotate by schmod
+  https://github.com/schmod/babel-plugin-angularjs-annotate
+- ng-annotate by Olov Lassus and contributors
+  https://github.com/olov/ng-annotate
+
+The original ng-annotate copyright is:
+
+  Copyright (c) 2013-2016 Olov Lassus <olov.lassus@gmail.com>
+
+Both upstream projects are distributed under the MIT License. The upstream
+copyright is retained in this project's LICENSE. The development test suite
+loads the published babel-plugin-angularjs-annotate@0.10.0 fixtures directly;
+those fixture files are not included in this package's published files.

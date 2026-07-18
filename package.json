@@ -1,0 +1,71 @@
+{
+  "name": "rolldown-plugin-angularjs-annotate",
+  "version": "0.0.0",
+  "description": "AngularJS dependency injection annotations for Rolldown without a Babel transform layer",
+  "author": "Gilles Piou",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.js",
+      "default": "./index.js"
+    },
+    "./core": {
+      "types": "./src/annotate.d.ts",
+      "require": "./src/annotate.js",
+      "default": "./src/annotate.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "NOTICE",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "test:parity": "node --test test/parity.test.js",
+    "test:unit": "node --test test/annotate.test.js test/plugin.test.js",
+    "typecheck": "tsc -p type-tests/tsconfig.json",
+    "lint:package": "publint && attw --pack . --profile node16",
+    "check": "npm run typecheck && npm test && npm run lint:package",
+    "prepublishOnly": "npm run check"
+  },
+  "keywords": [
+    "angularjs",
+    "dependency-injection",
+    "ng-annotate",
+    "rolldown",
+    "rolldown-plugin"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "dependencies": {
+    "magic-string": "^0.30.21",
+    "picomatch": "^4.0.5"
+  },
+  "peerDependencies": {
+    "rolldown": "^1.2.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "angular": "1.8.3",
+    "babel-plugin-angularjs-annotate": "0.10.0",
+    "publint": "^0.3.21",
+    "rolldown": "^1.2.0",
+    "typescript": "^5.9.3"
+  },
+  "compatiblePackages": {
+    "schemaVersion": 1,
+    "rollup": {
+      "type": "incompatible",
+      "reason": "Targets and tests Rolldown only and depends on Rolldown parser and plugin APIs"
+    }
+  }
+}
