@@ -116,6 +116,11 @@ MagicString both disabled and enabled. Babel is a development-only fixture
 preprocessor for the ES5 compatibility lane; published transforms use
 Rolldown's parser and do not add a Babel transform layer.
 
+## AI disclosure
+
+Developed entirely with OpenAI Codex (GPT-5.6 Sol, using Ultra and Extra High
+reasoning effort).
+
 ## License
 
 MIT. See [NOTICE](NOTICE) for upstream attribution.
