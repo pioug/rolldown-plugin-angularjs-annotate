@@ -52,7 +52,7 @@
     "rolldown-plugin"
   ],
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "magic-string": "^0.30.21"
