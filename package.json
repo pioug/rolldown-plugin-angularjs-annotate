@@ -41,8 +41,9 @@
     "test:unit": "node --test test/annotate.test.js test/angular-aliases.test.js test/binding-resolution.test.js test/markers.test.js test/nested-targets.test.js test/plugin.test.js test/typescript.test.js",
     "typecheck": "tsc -p type-tests/tsconfig.json",
     "lint:package": "publint && attw --pack . --profile node16",
+    "verify:package-contents": "node scripts/verify-package-contents.js",
     "check": "npm run typecheck && npm test && npm run lint:package",
-    "prepublishOnly": "npm run check"
+    "prepublishOnly": "npm run check && npm run verify:package-contents"
   },
   "keywords": [
     "angularjs",

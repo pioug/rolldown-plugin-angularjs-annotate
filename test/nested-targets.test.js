@@ -1,5 +1,5 @@
 const test = require('node:test');
-const { assertTransform } = require('../test-support/transform');
+const { assertEquivalentTransform } = require('../test-support/transform');
 
 test('Scan nested provider and directive targets through pre-annotated arrays', () => {
   const input = `
@@ -20,7 +20,7 @@ test('Scan nested provider and directive targets through pre-annotated arrays', 
         return { controller: ['controllerDep', function(controllerDep) {}] };
       }]);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Scan nested provider and directive targets when the outer factory is blocked', () => {
@@ -50,7 +50,7 @@ test('Scan nested provider and directive targets when the outer factory is block
       .provider('provider', Provider)
       .directive('directive', Directive);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Scan nested targets through conditional and logical pre-annotated bindings', () => {
@@ -76,7 +76,7 @@ test('Scan nested targets through conditional and logical pre-annotated bindings
       .provider('provider', provider)
       .directive('directive', directive);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Scan nested provider and directive targets returned by binding IIFEs', () => {
@@ -102,7 +102,7 @@ test('Scan nested provider and directive targets returned by binding IIFEs', () 
       .provider('provider', Provider)
       .directive('directive', Directive);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Scan nested targets inside ngNoInject registration wrappers', () => {
@@ -124,7 +124,7 @@ test('Scan nested targets inside ngNoInject registration wrappers', () => {
         return { controller: ['controllerDep', function(controllerDep) {}] };
       }));
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Scan nested targets through blocked wrappers in indirect registration paths', () => {
@@ -150,7 +150,7 @@ test('Scan nested targets through blocked wrappers in indirect registration path
       .provider('provider', Provider)
       .directive('directive', Directive);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Scan nested targets through assignment and sequence IIFE returns', () => {
@@ -178,7 +178,7 @@ test('Scan nested targets through assignment and sequence IIFE returns', () => {
       .provider('assignment', AssignmentProvider)
       .provider('sequence', SequenceProvider);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Follow a directly returned local directive helper', () => {
@@ -198,7 +198,7 @@ test('Follow a directly returned local directive helper', () => {
       return makeDefinition();
     });
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Follow optional and sequence-wrapped local directive helpers', () => {
@@ -232,5 +232,5 @@ test('Follow optional and sequence-wrapped local directive helpers', () => {
         return (0, makeSequence)();
       });
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });

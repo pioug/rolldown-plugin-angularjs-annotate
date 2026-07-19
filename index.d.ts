@@ -21,7 +21,8 @@ declare namespace angularjsAnnotate {
   }
 
   interface ParserComment {
-    type: string;
+    /** Accepted for compatibility with parser comment objects; annotation only uses the range and value. */
+    type?: string;
     value: string;
     start: number;
     end: number;

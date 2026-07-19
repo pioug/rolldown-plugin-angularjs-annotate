@@ -643,10 +643,7 @@ class Annotator {
   matchesModuleExpression(node) {
     if (node.type === 'Identifier' && node.name === 'angular' && !this.isAngularReference(node)) return false;
     const source = this.code.slice(node.start, node.end);
-    this.moduleRegexp.lastIndex = 0;
-    const result = this.moduleRegexp.test(source);
-    this.moduleRegexp.lastIndex = 0;
-    return result;
+    return this.moduleRegexp.test(source);
   }
 
   isAngularReference(identifier, trail = new Set()) {
@@ -1465,7 +1462,6 @@ function scopeInsertionPosition(scope) {
 function normalizeComments(comments) {
   if (!Array.isArray(comments)) return null;
   return comments.map(comment => ({
-    type: comment.type,
     value: comment.value || '',
     start: comment.start,
     end: comment.end,
@@ -1486,7 +1482,6 @@ function scanComments(code, nodes) {
     if (range && start >= range[0] && start < range[1]) continue;
     const block = match[0].startsWith('/*');
     comments.push({
-      type: block ? 'Block' : 'Line',
       value: block ? match[0].slice(2, -2) : match[0].slice(2),
       start,
       end: start + match[0].length,

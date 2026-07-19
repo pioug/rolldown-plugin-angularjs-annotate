@@ -35,11 +35,16 @@ async function bundleVirtual(plugin, code, id, moduleType) {
 test('Expose CommonJS and ESM-compatible public exports', async () => {
   assert.equal(angularjsAnnotate.angularjsAnnotate, angularjsAnnotate);
   assert.equal(typeof angularjsAnnotate.annotate, 'function');
+  const core = require('rolldown-plugin-angularjs-annotate/core');
+  assert.equal(core, angularjsAnnotate.annotate);
 
   const namespace = await import('../index.js');
   assert.equal(namespace.default, angularjsAnnotate);
   assert.equal(namespace.angularjsAnnotate, angularjsAnnotate);
   assert.equal(namespace.annotate, angularjsAnnotate.annotate);
+
+  const coreNamespace = await import('rolldown-plugin-angularjs-annotate/core');
+  assert.equal(coreNamespace.default, core);
 });
 
 test('Transform consistently with standalone and native MagicString', () => {

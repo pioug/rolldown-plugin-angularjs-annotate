@@ -4,18 +4,17 @@ const MagicString = require('magic-string');
 const { parseSync } = require('rolldown/utils');
 const annotate = require('./src/annotate');
 
-const DEFAULT_INCLUDE = /\.[cm]?[jt]sx?(?:$|\?)/;
 const DEFAULT_EXCLUDE = [/(?:^|[/\\])node_modules[/\\]/, /\0rolldown[/\\]runtime\.js$/];
 
 function angularjsAnnotate(options = {}) {
-  const { include = DEFAULT_INCLUDE, exclude = DEFAULT_EXCLUDE } = options;
-  const useModuleType = options.include === undefined;
+  const { include, exclude = DEFAULT_EXCLUDE } = options;
+  const useModuleTypeFilter = include === undefined;
 
   return {
     name: 'rolldown-plugin-angularjs-annotate',
     enforce: 'post',
     transform: {
-      filter: useModuleType ? {
+      filter: useModuleTypeFilter ? {
         id: { exclude },
         moduleType: ['js', 'jsx', 'ts', 'tsx'],
       } : { id: { include, exclude } },

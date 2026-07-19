@@ -1,6 +1,5 @@
 const test = require('node:test');
-const assert = require('node:assert');
-const { transform } = require('../test-support/transform');
+const { assertEquivalentTransform } = require('../test-support/transform');
 
 test('Recognize TypeScript-wrapped long-form Angular receivers', () => {
   const input = `
@@ -8,9 +7,12 @@ test('Recognize TypeScript-wrapped long-form Angular receivers', () => {
     (angular as any).module('x').run(function(assertedDep: Service) {});
     angular!.module('x').run(function(nonNullDep: Service) {});
   `;
-  const output = transform(input, { id: 'fixture.ts' }).code;
-  assert.match(output, /\.run\(\["assertedDep", function\(assertedDep: Service\)/);
-  assert.match(output, /\.run\(\["nonNullDep", function\(nonNullDep: Service\)/);
+  const expected = `
+    declare const angular: any;
+    (angular as any).module('x').run(['assertedDep', function(assertedDep: Service) {}]);
+    angular!.module('x').run(['nonNullDep', function(nonNullDep: Service) {}]);
+  `;
+  assertEquivalentTransform(input, expected, { id: 'fixture.ts' });
 });
 
 test('Recognize TypeScript-wrapped annotation wrapper callees', () => {
@@ -20,8 +22,13 @@ test('Recognize TypeScript-wrapped annotation wrapper callees', () => {
       (ngInject as typeof ngInject)(function(tsDep: Service) {}),
     );
   `;
-  const output = transform(input, { id: 'fixture.ts' }).code;
-  assert.match(output, /ngInject as typeof ngInject\)\(\["tsDep", function\(tsDep: Service\)/);
+  const expected = `
+    angular.module('x').factory(
+      'factory',
+      (ngInject as typeof ngInject)(['tsDep', function(tsDep: Service) {}]),
+    );
+  `;
+  assertEquivalentTransform(input, expected, { id: 'fixture.ts' });
 });
 
 test('Ignore TypeScript fake this parameters when deriving dependencies', () => {
@@ -30,9 +37,12 @@ test('Ignore TypeScript fake this parameters when deriving dependencies', () => 
     interface Service {}
     angular.module('x').run(function(this: Context, dep: Service) {});
   `;
-  const output = transform(input, { id: 'fixture.ts' }).code;
-  assert.match(output, /\.run\(\["dep", function\(this: Context, dep: Service\)/);
-  assert.doesNotMatch(output, /\["this"/);
+  const expected = `
+    interface Context {}
+    interface Service {}
+    angular.module('x').run(['dep', function(this: Context, dep: Service) {}]);
+  `;
+  assertEquivalentTransform(input, expected, { id: 'fixture.ts' });
 });
 
 test('Use the TypeScript constructor implementation rather than an overload signature', () => {
@@ -44,7 +54,14 @@ test('Use the TypeScript constructor implementation rather than an overload sign
     }
     angular.module('x').service('Service', Service);
   `;
-  const output = transform(input, { id: 'fixture.ts' }).code;
-  assert.match(output, /Service\.\$inject = \["runtimeDep"\];/);
-  assert.doesNotMatch(output, /\["overloadName"\]/);
+  const expected = `
+    interface Dependency {}
+    class Service {
+      constructor(overloadName: Dependency);
+      constructor(runtimeDep: Dependency) {}
+    }
+    Service.$inject = ['runtimeDep'];
+    angular.module('x').service('Service', Service);
+  `;
+  assertEquivalentTransform(input, expected, { id: 'fixture.ts' });
 });

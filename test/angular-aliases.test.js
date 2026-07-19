@@ -1,6 +1,8 @@
 const test = require('node:test');
-const assert = require('node:assert');
-const { assertTransform, transform } = require('../test-support/transform');
+const {
+  assertEquivalentTransform,
+  assertUnchangedTransform,
+} = require('../test-support/transform');
 
 test('Recognize proven local Angular aliases', async t => {
   const cases = [
@@ -87,7 +89,7 @@ test('Recognize proven local Angular aliases', async t => {
   ];
 
   for (const fixture of cases) {
-    await t.test(fixture.name, () => assertTransform(fixture.input, fixture.expected));
+    await t.test(fixture.name, () => assertEquivalentTransform(fixture.input, fixture.expected));
   }
 });
 
@@ -108,12 +110,12 @@ test('Do not treat an unrelated shadow binding as Angular', () => {
       angular.module('x').run(function(fakeDep) {});
     }
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Do not treat named imports from Angular as the Angular namespace', () => {
   const input = "import { version } from 'angular'; version.module('x').run(function(falsePositiveDep) {});";
-  assert.equal(transform(input).code, input);
+  assertUnchangedTransform(input);
 });
 
 test('Recognize proven Angular aliases passed to direct IIFEs', () => {
@@ -129,7 +131,7 @@ test('Recognize proven Angular aliases passed to direct IIFEs', () => {
     })(window.angular);
     (angular => angular.module('x').run(['arrowDep', function(arrowDep) {}]))(globalThis.angular);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Recognize proven destructured Angular aliases', () => {
@@ -157,7 +159,7 @@ test('Recognize proven destructured Angular aliases', () => {
       ng.module('x').run(['globalDep', function(globalDep) {}]);
     }
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Reject unproven and shadowed destructured Angular aliases', () => {
@@ -170,17 +172,17 @@ test('Reject unproven and shadowed destructured Angular aliases', () => {
       angular.module('x').run(function(shadowedDep) {});
     }
   `;
-  assert.equal(transform(input).code, input);
+  assertUnchangedTransform(input);
 });
 
 test('Recognize parenthesized long-form Angular receivers', () => {
   const input = "const angular = window.angular; (angular).module('x').run(function(wrappedDep) {});";
   const expected = "const angular = window.angular; (angular).module('x').run(['wrappedDep', function(wrappedDep) {}]);";
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Allow regexp to match a call-expression module receiver', () => {
   const input = "require('app-module').controller('Controller', function(callDep) {});";
   const expected = "require('app-module').controller('Controller', ['callDep', function(callDep) {}]);";
-  assertTransform(input, expected, { options: { regexp: '^require\\(.+\\)$' } });
+  assertEquivalentTransform(input, expected, { options: { regexp: '^require\\(.+\\)$' } });
 });

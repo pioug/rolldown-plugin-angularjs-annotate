@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { assertTransform, transform } = require('../test-support/transform');
+const {
+  assertEquivalentTransform,
+  assertExactTransform,
+  assertUnchangedTransform,
+  transform,
+} = require('../test-support/transform');
 
 test('Recognize parenthesized annotation wrapper callees', () => {
   const input = `
@@ -17,12 +22,12 @@ test('Recognize parenthesized annotation wrapper callees', () => {
         this.$get = ['providerDep', function(providerDep) {}];
       }));
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Ignore explicit prologues in non-injectable methods and accessors', () => {
   const input = "class Service { method(methodDep) { 'ngInject'; } static other(staticDep) { 'ngInject'; } } const object = { set value(setterDep) { 'ngInject'; } };";
-  assert.equal(transform(input).code, input);
+  assertUnchangedTransform(input);
 });
 
 test('Reject an explicitly marked existing array with too few annotations', () => {
@@ -60,7 +65,7 @@ test('Apply a declaration-level ngInject marker to every object declarator', () 
     const first = { start: ['firstDep', function(firstDep) {}] },
       second = { nested: { start: ['secondDep', function(secondDep) {}] } };
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Apply a declaration-level ngNoInject marker to every object declarator', () => {
@@ -69,7 +74,7 @@ test('Apply a declaration-level ngNoInject marker to every object declarator', (
     const first = { start: function(firstDep) { 'ngInject'; } },
       second = { nested: { start: function(secondDep) { 'ngInject'; } } };
   `;
-  assert.equal(transform(input).code, input);
+  assertUnchangedTransform(input);
 });
 
 test('Honor explicit markers before parenthesized callables', () => {
@@ -84,7 +89,7 @@ test('Honor explicit markers before parenthesized callables', () => {
     consume(/* @ngInject */ ((['argumentDep', function(argumentDep) {}])));
     const blocked = /* @ngNoInject */ (function(blockedDep) { 'ngInject'; });
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Use multi-function ngNoInject only to suppress explicit annotations', () => {
@@ -93,8 +98,8 @@ test('Use multi-function ngNoInject only to suppress explicit annotations', () =
     const first = function(firstDep) { 'ngInject'; },
       second = function(secondDep) { 'ngInject'; };
   `;
-  assert.equal(transform(declaration).code, declaration);
-  assert.equal(transform(declaration, { options: { explicitOnly: true } }).code, declaration);
+  assertUnchangedTransform(declaration);
+  assertUnchangedTransform(declaration, { options: { explicitOnly: true } });
 
   const registered = `
     ${declaration}
@@ -110,8 +115,8 @@ test('Use multi-function ngNoInject only to suppress explicit annotations', () =
       .controller('first', first)
       .controller('second', second);
   `;
-  assertTransform(registered, expected);
-  assert.equal(transform(registered, { options: { explicitOnly: true } }).code, registered);
+  assertEquivalentTransform(registered, expected);
+  assertUnchangedTransform(registered, { options: { explicitOnly: true } });
 });
 
 test('Use multi-class ngNoInject only to suppress explicit constructor annotations', () => {
@@ -120,8 +125,8 @@ test('Use multi-class ngNoInject only to suppress explicit constructor annotatio
     const First = class { constructor(firstDep) { 'ngInject'; } },
       Second = class { constructor(secondDep) { 'ngInject'; } };
   `;
-  assert.equal(transform(declaration).code, declaration);
-  assert.equal(transform(declaration, { options: { explicitOnly: true } }).code, declaration);
+  assertUnchangedTransform(declaration);
+  assertUnchangedTransform(declaration, { options: { explicitOnly: true } });
 
   const registered = `
     ${declaration}
@@ -129,10 +134,16 @@ test('Use multi-class ngNoInject only to suppress explicit constructor annotatio
       .service('First', First)
       .service('Second', Second);
   `;
-  const output = transform(registered).code;
-  assert.match(output, /First\.\$inject = \["firstDep"\];/);
-  assert.match(output, /Second\.\$inject = \["secondDep"\];/);
-  assert.equal(transform(registered, { options: { explicitOnly: true } }).code, registered);
+  const expected = `
+    ${declaration}
+    First.$inject = ['firstDep'];
+    Second.$inject = ['secondDep'];
+    angular.module('x')
+      .service('First', First)
+      .service('Second', Second);
+  `;
+  assertEquivalentTransform(registered, expected);
+  assertUnchangedTransform(registered, { options: { explicitOnly: true } });
 });
 
 test('Do not interpret parenthesized strings as directive prologues', () => {
@@ -144,22 +155,22 @@ test('Do not interpret parenthesized strings as directive prologues', () => {
     const unrelated = function(explicitDep) { ('ngInject'); };
     angular.module('x').run(['contextDep', function(contextDep) { ('ngNoInject'); }]);
   `;
-  assertTransform(input, expected);
+  assertEquivalentTransform(input, expected);
 });
 
 test('Keep the complete leading comment group attached to a marked declaration', () => {
   const input = "// documentation\n// @ngInject\nfunction marked(dep) {}";
   const expected = "marked.$inject = [\"dep\"];\n// documentation\n// @ngInject\nfunction marked(dep) {}";
-  assert.equal(transform(input).code, expected);
+  assertExactTransform(input, expected);
 });
 
 test('Match upstream marker placement after an existing directive prologue', () => {
   const input = "'use strict';\n// @ngInject\nfunction marked(dep) {}";
   const expected = "'use strict';\n// @ngInject\nmarked.$inject = [\"dep\"];\nfunction marked(dep) {}";
-  assert.equal(transform(input).code, expected);
+  assertExactTransform(input, expected);
 });
 
 test('Ignore declaration-level markers on exported multi-declarator statements', () => {
   const input = "/* @ngInject */ export const first = { start: function(firstDep) {} }, second = { start: function(secondDep) {} };";
-  assert.equal(transform(input).code, input);
+  assertUnchangedTransform(input);
 });

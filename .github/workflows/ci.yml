@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,12 +22,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        node-version: [22, 24, 26]
+        node-version: ['22.12.0', '24', '26']
         include:
           - os: macos-latest
-            node-version: 24
+            node-version: '24'
           - os: windows-latest
-            node-version: 24
+            node-version: '24'
 
     steps:
       - name: Checkout
@@ -48,5 +48,5 @@ jobs:
         run: npm run check
 
       - name: Verify package contents
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 24
-        run: npm pack --dry-run
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24'
+        run: npm run verify:package-contents
