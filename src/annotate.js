@@ -422,10 +422,11 @@ class Annotator {
   }
 
   collectExplicitActions() {
-    const candidates = this.explicitCandidates();
+    let candidates;
     for (const comment of this.comments) {
       const annotation = commentAnnotation(comment.value);
       if (annotation == null) continue;
+      candidates ||= this.explicitCandidates();
       const node = this.nextAnnotatedNode(comment, candidates);
       if (!annotation && node?.type === 'VariableDeclaration' && node.declarations.length !== 1) {
         for (const declaration of node.declarations) {
