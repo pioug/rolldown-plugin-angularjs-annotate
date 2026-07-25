@@ -65,13 +65,18 @@ class Annotator {
     this.configSeen = new Map();
 
     this.indexAst();
+    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
+    this.skipAnalysis = !this.hasAnnotationCandidates();
+    if (this.skipAnalysis) return;
+
+    this.commentByStart = new Map(this.comments.map(comment => [comment.start, comment]));
     this.rootScope = this.buildScopes();
     this.collectBindingWrites();
-    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
-    this.commentByStart = new Map(this.comments.map(comment => [comment.start, comment]));
   }
 
   run() {
+    if (this.skipAnalysis) return;
+
     this.collectExistingAnnotations();
     this.collectExplicitActions();
 
@@ -107,6 +112,20 @@ class Annotator {
       if (node.type === 'Property' && node.method && isFunction(node.value)) {
         this.methodProperties.set(node.value, node);
       }
+    });
+  }
+
+  hasAnnotationCandidates() {
+    if (this.comments.some(comment => commentAnnotation(comment.value) != null)) return true;
+    if (this.nodes.some(node => isFunction(node) && functionDirective(node) != null)) return true;
+    if (this.calls.some(call => annotationWrapperName(call))) return true;
+    if (this.options.explicitOnly) return false;
+
+    return this.calls.some(call => {
+      const callee = unwrap(call.callee);
+      if (callee?.type !== 'MemberExpression' || callee.computed) return false;
+      const method = staticPropertyName(callee);
+      return method === 'module' || REGISTRATION_METHODS.has(method);
     });
   }
 
