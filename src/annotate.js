@@ -41,6 +41,12 @@ class Annotator {
     this.calls = [];
     this.parents = new WeakMap();
     this.methodProperties = new WeakMap();
+
+    this.indexAst();
+    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
+    this.skipAnalysis = !this.hasAnnotationCandidates();
+    if (this.skipAnalysis) return;
+
     this.nodeScopes = new WeakMap();
     this.functionScopes = new WeakMap();
     this.bindingByValue = new WeakMap();
@@ -63,11 +69,6 @@ class Annotator {
     this.after = new Map();
     this.generatedNames = new Set();
     this.configSeen = new Map();
-
-    this.indexAst();
-    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
-    this.skipAnalysis = !this.hasAnnotationCandidates();
-    if (this.skipAnalysis) return;
 
     this.commentByStart = new Map(this.comments.map(comment => [comment.start, comment]));
     this.rootScope = this.buildScopes();
