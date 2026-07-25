@@ -1,6 +1,6 @@
 'use strict';
 
-const MagicString = require('magic-string');
+const { default: MagicString } = require('magic-string');
 const { parseSync } = require('rolldown/utils');
 const annotate = require('./src/annotate');
 

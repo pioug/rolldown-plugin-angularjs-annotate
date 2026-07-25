@@ -1,5 +1,5 @@
 const assert = require('node:assert');
-const MagicString = require('magic-string');
+const { default: MagicString } = require('magic-string');
 const { minifySync, parseSync } = require('rolldown/utils');
 const angularjsAnnotate = require('..');
 const annotate = require('../src/annotate');

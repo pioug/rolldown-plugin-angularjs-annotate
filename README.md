@@ -11,7 +11,7 @@ negative cases and `explicitOnly`.
 
 ## Install
 
-Requires Node.js `>=22.12.0` and Rolldown `^1.2.0`.
+Requires Node.js `^22.18.0 || >=24.11.0` and Rolldown `^1.2.0`.
 
 ```sh
 npm install --save-dev rolldown-plugin-angularjs-annotate

@@ -1,13 +1,19 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const babel = require('@babel/core');
-const MagicString = require('magic-string');
+const { default: MagicString } = require('magic-string');
 const { parseSync } = require('rolldown/utils');
 const annotate = require('../src/annotate');
 
-const ES5_PRESETS = [
-  [require.resolve('@babel/preset-env'), { exclude: ['transform-function-name'] }],
-];
+const ES5_BABEL_OPTIONS = {
+  presets: [
+    [require.resolve('@babel/preset-env'), {
+      exclude: ['transform-function-name'],
+      modules: 'commonjs',
+    }],
+  ],
+  targets: { ie: '11' },
+};
 
 const FIXTURE_ROOT = 'babel-plugin-angularjs-annotate/tests';
 const SUITES = [
@@ -47,20 +53,20 @@ function transform(code, options = {}) {
   return magicString.toString();
 }
 
-function compile(code, presets) {
+function compile(code, babelOptions) {
   return babel.transformSync(code, {
     babelrc: false,
     configFile: false,
     compact: true,
     comments: true,
-    presets,
+    ...babelOptions,
   }).code.trim().replace(/\n/g, '');
 }
 
 function modesFor(fixture) {
   const modes = [];
-  if (!fixture.noES5) modes.push({ name: 'ES5', presets: ES5_PRESETS });
-  if (!fixture.noES6) modes.push({ name: 'ES2015', presets: [] });
+  if (!fixture.noES5) modes.push({ name: 'ES5', babelOptions: ES5_BABEL_OPTIONS });
+  if (!fixture.noES6) modes.push({ name: 'ES2015', babelOptions: { presets: [] } });
   return modes;
 }
 
@@ -104,8 +110,8 @@ for (const suite of SUITES) {
         for (const fixtureCase of casesFor(fixture)) {
           await t.test(`${mode.name}: ${fixtureCase.name}`, () => {
             assert.equal(
-              compile(transform(fixtureCase.input), mode.presets),
-              compile(fixtureCase.expected, mode.presets),
+              compile(transform(fixtureCase.input), mode.babelOptions),
+              compile(fixtureCase.expected, mode.babelOptions),
             );
           });
         }
@@ -113,8 +119,8 @@ for (const suite of SUITES) {
         if (fixture.explicit && !fixture.contextDependent) {
           await t.test(`${mode.name} explicitOnly: ${fixture.name}`, () => {
             assert.equal(
-              compile(transform(functionBody(fixture.input), { explicitOnly: true }), mode.presets),
-              compile(functionBody(fixture.expected), mode.presets),
+              compile(transform(functionBody(fixture.input), { explicitOnly: true }), mode.babelOptions),
+              compile(functionBody(fixture.expected), mode.babelOptions),
             );
           });
         }
@@ -122,7 +128,10 @@ for (const suite of SUITES) {
         if (fixture.implicit && !fixture.contextDependent) {
           await t.test(`${mode.name} explicitOnly: ${fixture.name}`, () => {
             const input = functionBody(fixture.input);
-            assert.equal(compile(transform(input, { explicitOnly: true }), mode.presets), compile(input, mode.presets));
+            assert.equal(
+              compile(transform(input, { explicitOnly: true }), mode.babelOptions),
+              compile(input, mode.babelOptions),
+            );
           });
         }
       }

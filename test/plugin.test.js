@@ -1,12 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const MagicString = require('magic-string');
+const { TraceMap, originalPositionFor } = require('@jridgewell/trace-mapping');
+const { default: MagicString } = require('magic-string');
 const { rolldown } = require('rolldown');
 const { parseSync } = require('rolldown/utils');
 const angularjsAnnotate = require('..');
 
 function transform(plugin, code, id, meta) {
   return plugin.transform.handler.call({ warn() {} }, code, id, meta);
+}
+
+function positionOf(code, token) {
+  const index = code.indexOf(token);
+  assert.notEqual(index, -1, `Expected code to contain ${JSON.stringify(token)}`);
+  const prefix = code.slice(0, index);
+  const lines = prefix.split('\n');
+  return { line: lines.length, column: lines.at(-1).length };
 }
 
 async function bundleVirtual(plugin, code, id, moduleType) {
@@ -59,6 +68,25 @@ test('Transform consistently with standalone and native MagicString', () => {
   assert.equal(native.code, magicString);
   assert.equal(native.code.toString(), standalone.code);
   assert.ok(standalone.map);
+});
+
+test('Map generated code back to its original positions', () => {
+  const code = [
+    "angular.module('x').run(function($http) {",
+    "  return $http.get('/resource');",
+    '});',
+  ].join('\n');
+  const result = transform(angularjsAnnotate(), code, 'test.js');
+  const traceMap = new TraceMap(result.map);
+
+  assert.deepEqual(result.map.sources, ['test.js']);
+  assert.deepEqual(result.map.sourcesContent, [code]);
+  for (const token of ['function', '$http.get', "'/resource'"]) {
+    assert.deepEqual(
+      originalPositionFor(traceMap, positionOf(result.code, token)),
+      { source: 'test.js', ...positionOf(code, token), name: null },
+    );
+  }
 });
 
 test('Delegate default exclusions to Rolldown hook filters', async () => {
@@ -126,6 +154,7 @@ test('Respect custom includes even when Rolldown supplies a JavaScript module ty
 
 for (const nativeMagicString of [false, true]) {
   test(`Transform through a real Rolldown build (nativeMagicString: ${nativeMagicString})`, async () => {
+    const code = "angular.module('x').run(function(dep) {});";
     const build = await rolldown({
       input: 'entry.js',
       experimental: { nativeMagicString },
@@ -133,7 +162,7 @@ for (const nativeMagicString of [false, true]) {
         {
           name: 'virtual-entry',
           resolveId(id) { if (id === 'entry.js') return id; },
-          load(id) { if (id === 'entry.js') return "angular.module('x').run(function(dep) {});"; },
+          load(id) { if (id === 'entry.js') return code; },
         },
         angularjsAnnotate(),
       ],
@@ -144,6 +173,15 @@ for (const nativeMagicString of [false, true]) {
       assert.ok(output.output[0].map);
       assert.equal(output.output[0].map.sources.length, 1);
       assert.match(output.output[0].map.sources[0], /entry\.js$/);
+      const original = originalPositionFor(
+        new TraceMap(output.output[0].map),
+        positionOf(output.output[0].code, 'function(dep)'),
+      );
+      assert.match(original.source, /entry\.js$/);
+      assert.deepEqual(
+        { line: original.line, column: original.column },
+        positionOf(code, 'function(dep)'),
+      );
     } finally {
       await build.close();
     }
