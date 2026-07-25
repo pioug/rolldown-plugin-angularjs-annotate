@@ -1470,13 +1470,16 @@ function normalizeComments(comments) {
 }
 
 function scanComments(code, nodes) {
+  const regexp = /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g;
+  const firstMatch = regexp.exec(code);
+  if (!firstMatch) return [];
+
   const protectedRanges = nodes.filter(node =>
     node.type === 'Literal' || node.type === 'TemplateElement' || node.type === 'JSXText'
   ).map(node => [node.start, node.end]).sort((left, right) => left[0] - right[0]);
   const comments = [];
-  const regexp = /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g;
   let rangeIndex = 0;
-  for (const match of code.matchAll(regexp)) {
+  for (let match = firstMatch; match; match = regexp.exec(code)) {
     const start = match.index;
     while (rangeIndex < protectedRanges.length && protectedRanges[rangeIndex][1] <= start) rangeIndex++;
     const range = protectedRanges[rangeIndex];
