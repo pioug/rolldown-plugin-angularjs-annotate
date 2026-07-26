@@ -48,7 +48,8 @@ class Annotator {
     this.writeNodes = [];
     this.existingAnnotationNodes = [];
     this.calls = [];
-    this.explicitNodes = [];
+    this.explicitDirectives = [];
+    this.annotationWrappers = [];
     this.hasIndexedCandidate = false;
     // The annotator already owns the AST for exactly the lifetime of these indexes.
     this.parents = new Map();
@@ -143,21 +144,26 @@ class Annotator {
       case 'FunctionDeclaration':
       case 'FunctionExpression':
         functionNode = true;
-        this.explicitNodes.push(node);
-        if (!this.hasIndexedCandidate && functionDirective(node) != null) {
-          this.hasIndexedCandidate = true;
+        {
+          const directive = functionDirective(node);
+          if (directive != null) {
+            this.explicitDirectives.push({ node, directive });
+            this.hasIndexedCandidate = true;
+          }
         }
         break;
-      case 'CallExpression':
+      case 'CallExpression': {
         this.calls.push(node);
-        if (annotationWrapperName(node)) {
-          this.explicitNodes.push(node);
+        const wrapper = annotationWrapperName(node);
+        if (wrapper) {
+          this.annotationWrappers.push({ node, wrapper });
           this.hasIndexedCandidate = true;
         }
         if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
           this.hasIndexedCandidate = true;
         }
         break;
+      }
       case 'Property':
         if (node.method && isFunction(node.value)) {
           this.methodProperties.set(node.value, node);
@@ -536,24 +542,20 @@ class Annotator {
       for (const target of targets) this.explicitActions.push({ node: target, annotate: annotation });
     }
 
-    for (const node of this.explicitNodes) {
-      if (isFunction(node)) {
-        const directive = functionDirective(node);
-        if (directive != null && !this.suppressedFunctionDirectives.has(node)) {
-          let target = node;
-          const parent = this.parents.get(node);
-          if (parent?.type === 'Property' && (parent.kind === 'get' || parent.kind === 'set')) continue;
-          if (parent?.type === 'MethodDefinition') {
-            if (parent.kind !== 'constructor') continue;
-            target = this.findAncestor(parent, isClass) || node;
-          }
-          this.explicitActions.push({ node: target, annotate: directive });
+    for (const { node, directive } of this.explicitDirectives) {
+      if (!this.suppressedFunctionDirectives.has(node)) {
+        let target = node;
+        const parent = this.parents.get(node);
+        if (parent?.type === 'Property' && (parent.kind === 'get' || parent.kind === 'set')) continue;
+        if (parent?.type === 'MethodDefinition') {
+          if (parent.kind !== 'constructor') continue;
+          target = this.findAncestor(parent, isClass) || node;
         }
+        this.explicitActions.push({ node: target, annotate: directive });
       }
-      const wrapper = annotationWrapperName(node);
-      if (wrapper) {
-        this.explicitActions.push({ node: node.arguments[0], annotate: wrapper === 'ngInject' });
-      }
+    }
+    for (const { node, wrapper } of this.annotationWrappers) {
+      this.explicitActions.push({ node: node.arguments[0], annotate: wrapper === 'ngInject' });
     }
   }
 
