@@ -64,8 +64,17 @@ class Annotator {
     this.skipAnalysis = !this.hasAnnotationCandidates();
     if (this.skipAnalysis) return;
 
-    this.contextualCalls = this.calls.filter(isContextualCallCandidate);
-    this.regularCalls = this.options.explicitOnly ? [] : this.calls.filter(isImplicitAnnotationCandidate);
+    this.contextualCalls = [];
+    this.regularCalls = [];
+    if (!this.options.explicitOnly) {
+      for (const call of this.calls) {
+        const callee = unwrap(call.callee);
+        if (callee?.type !== 'MemberExpression' || callee.computed) continue;
+        const method = staticPropertyName(callee);
+        if (CONTEXTUAL_METHODS.has(method)) this.contextualCalls.push(call);
+        if (method === 'module' || REGISTRATION_METHODS.has(method)) this.regularCalls.push(call);
+      }
+    }
     this.regularInfoCache = new WeakMap();
 
     this.explicitActions = [];
@@ -1527,12 +1536,6 @@ function isImplicitAnnotationCandidate(node) {
   if (callee?.type !== 'MemberExpression' || callee.computed) return false;
   const method = staticPropertyName(callee);
   return method === 'module' || REGISTRATION_METHODS.has(method);
-}
-
-function isContextualCallCandidate(node) {
-  const callee = unwrap(node.callee);
-  return callee?.type === 'MemberExpression' && !callee.computed &&
-    CONTEXTUAL_METHODS.has(staticPropertyName(callee));
 }
 
 function lastSequenceExpression(input) {
