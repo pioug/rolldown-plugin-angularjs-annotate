@@ -682,14 +682,13 @@ class Annotator {
     }
   }
 
-  regularInfo(call, stack = new WeakSet()) {
+  regularInfo(call) {
     if (this.regularInfoCache.has(call)) return this.regularInfoCache.get(call);
-    if (!isNode(call) || call.type !== 'CallExpression' || stack.has(call)) return null;
-    stack.add(call);
+    if (!isNode(call) || call.type !== 'CallExpression') return null;
+    this.regularInfoCache.set(call, null);
 
     const callee = unwrap(call.callee);
     if (callee?.type !== 'MemberExpression' || callee.computed) {
-      this.regularInfoCache.set(call, null);
       return null;
     }
     const method = staticPropertyName(callee);
@@ -703,24 +702,20 @@ class Annotator {
 
     let isModule = false;
     if (object?.type === 'CallExpression') {
-      isModule = Boolean(this.regularInfo(object, stack)?.chain) || this.matchesModuleExpression(object);
+      isModule = Boolean(this.regularInfo(object)?.chain) || this.matchesModuleExpression(object);
     }
     else if (object && this.matchesModuleExpression(object)) isModule = true;
     if (!isModule || (!REGISTRATION_METHODS.has(method) && !CHAIN_ONLY_METHODS.has(method))) {
-      this.regularInfoCache.set(call, null);
       return null;
     }
 
     if (method === 'decorator' && object?.type === 'Identifier' && object.name === '$stateProvider') {
-      this.regularInfoCache.set(call, null);
       return null;
     }
     if (method === 'invoke' && object?.type === 'Identifier' && object.name === '$injector') {
-      this.regularInfoCache.set(call, null);
       return null;
     }
     if (['decorator', 'factory', 'provider', 'service'].includes(method) && object?.type === 'Identifier' && object.name === '$provide') {
-      this.regularInfoCache.set(call, null);
       return null;
     }
 
