@@ -139,6 +139,22 @@ test('Keep escaped annotation candidates inside the native code filter', async (
   assert.match(explicit, /handler\.\$inject = \["dep"\]/);
 });
 
+test('Allow comments between member access and implicit annotation methods', async () => {
+  const blockComment = await bundleVirtual(
+    angularjsAnnotate(),
+    "angular.module('x')./* gap */controller('name', function(blockDep) {});",
+    '/project/block-comment.js',
+  );
+  const lineComment = await bundleVirtual(
+    angularjsAnnotate(),
+    "angular.module('x').// gap\ncontroller('name', function(lineDep) {});",
+    '/project/line-comment.js',
+  );
+
+  assert.match(blockComment, /\["blockDep", function\(blockDep\)/);
+  assert.match(lineComment, /\["lineDep", function\(lineDep\)/);
+});
+
 test('Parse transformed Vue script IDs and reject parser failures as Errors', () => {
   const plugin = angularjsAnnotate();
   const code = "angular.module('x').run((dep: Service) => {});";

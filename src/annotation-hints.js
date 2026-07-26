@@ -7,16 +7,17 @@ const REGISTRATION_METHOD_NAMES = [
 const EXPLICIT_ANNOTATION_NAMES = ['ngInject', 'ngNoInject'];
 
 const REGISTRATION_METHODS = new Set(REGISTRATION_METHOD_NAMES);
-const EXPLICIT_ANNOTATION_CODE_FILTER = codeFilter(EXPLICIT_ANNOTATION_NAMES);
-const ANNOTATION_CODE_FILTER = codeFilter([
-  ...EXPLICIT_ANNOTATION_NAMES,
+// Escaped identifiers may decode to a supported name, and comments are legal after a member-access dot.
+const EXPLICIT_ANNOTATION_PATTERN = String.raw`\\|\b(?:${EXPLICIT_ANNOTATION_NAMES.join('|')})\b`;
+const MEMBER_TRIVIA = String.raw`(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*(?:\r\n?|\n|$))*`;
+const IMPLICIT_METHOD_PATTERN = [
   'module',
   ...REGISTRATION_METHOD_NAMES,
-]);
-
-function codeFilter(names) {
-  return new RegExp(String.raw`(?:\\|\b(?:${names.join('|')})\b)`);
-}
+].join('|');
+const EXPLICIT_ANNOTATION_CODE_FILTER = new RegExp(`(?:${EXPLICIT_ANNOTATION_PATTERN})`);
+const ANNOTATION_CODE_FILTER = new RegExp(
+  String.raw`(?:${EXPLICIT_ANNOTATION_PATTERN}|\.${MEMBER_TRIVIA}(?:${IMPLICIT_METHOD_PATTERN})\b)`,
+);
 
 module.exports = {
   ANNOTATION_CODE_FILTER,
