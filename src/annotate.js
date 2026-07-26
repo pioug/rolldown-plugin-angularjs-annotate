@@ -1777,8 +1777,12 @@ function forEachChild(node, callback, callbackContext, callbackState) {
     if (key === 'loc' || key === 'start' || key === 'end') continue;
     const value = node[key];
     if (Array.isArray(value)) {
-      for (const child of value) if (isNode(child)) callback(child, key, node, callbackContext, callbackState);
-    } else if (isNode(value)) {
+      for (const child of value) {
+        if (child && typeof child === 'object' && typeof child.type === 'string') {
+          callback(child, key, node, callbackContext, callbackState);
+        }
+      }
+    } else if (value && typeof value === 'object' && typeof value.type === 'string') {
       callback(value, key, node, callbackContext, callbackState);
     }
   }
