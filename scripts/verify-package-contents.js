@@ -12,6 +12,7 @@ const EXPECTED_FILES = [
   'package.json',
   'src/annotate.d.ts',
   'src/annotate.js',
+  'src/annotation-hints.js',
 ];
 
 const npmCommand = process.env.npm_execpath

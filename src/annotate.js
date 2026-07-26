@@ -1,9 +1,6 @@
 'use strict';
 
-const REGISTRATION_METHODS = new Set([
-  'animation', 'component', 'config', 'controller', 'decorator', 'directive', 'factory', 'filter',
-  'invoke', 'provider', 'run', 'service', 'store'
-]);
+const { REGISTRATION_METHODS } = require('./annotation-hints');
 const CHAIN_ONLY_METHODS = new Set(['bootstrap', 'constant', 'value']);
 const STATE_PROPERTIES = new Set(['controller', 'controllerProvider', 'onEnter', 'onExit', 'templateProvider']);
 const VIEW_PROPERTIES = new Set(['controller', 'controllerProvider', 'templateProvider']);

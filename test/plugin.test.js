@@ -107,6 +107,38 @@ test('Support native glob, array, and RegExp hook filters', async () => {
   assert.doesNotMatch(await bundleVirtual(plugin, code, '/project/source/four.css', 'js'), /\["dep"/);
 });
 
+test('Skip the transform hook when code has no annotation hints', async () => {
+  const plugin = angularjsAnnotate();
+  const handler = plugin.transform.handler;
+  let transforms = 0;
+  plugin.transform.handler = function(...args) {
+    transforms++;
+    return handler.apply(this, args);
+  };
+
+  assert.match(
+    await bundleVirtual(plugin, 'export const answer = 42;', '/project/source.js'),
+    /const answer = 42/,
+  );
+  assert.equal(transforms, 0);
+});
+
+test('Keep escaped annotation candidates inside the native code filter', async () => {
+  const implicit = await bundleVirtual(
+    angularjsAnnotate(),
+    "angular.module('x').contr\\u006fller('name', function(dep) {});",
+    '/project/implicit.js',
+  );
+  const explicit = await bundleVirtual(
+    angularjsAnnotate({ explicitOnly: true }),
+    "function handler(dep) { 'ng\\u0049nject'; } export { handler };",
+    '/project/explicit.js',
+  );
+
+  assert.match(implicit, /\["dep", function\(dep\)/);
+  assert.match(explicit, /handler\.\$inject = \["dep"\]/);
+});
+
 test('Parse transformed Vue script IDs and reject parser failures as Errors', () => {
   const plugin = angularjsAnnotate();
   const code = "angular.module('x').run((dep: Service) => {});";
