@@ -343,12 +343,15 @@ class Annotator {
   }
 
   rememberBindingValue(value, binding) {
-    for (const candidate of new Set([value, unwrap(value)])) {
-      if (!isNode(candidate)) continue;
+    const unwrapped = unwrap(value);
+    let candidate = value;
+    while (isNode(candidate)) {
       const existing = this.bindingByValue.get(candidate);
       if (!existing || existing.kind === 'function-name' || existing.kind === 'class-name') {
         this.bindingByValue.set(candidate, binding);
       }
+      if (candidate === unwrapped) break;
+      candidate = unwrapped;
     }
   }
 
