@@ -19,6 +19,11 @@ const WRAPPER_TYPES = new Set([
 ]);
 const AMD_LOADER_NAMES = new Set(['define', 'require', 'requirejs']);
 const ANNOTATION_WRAPPER_NAMES = new Set(['ngInject', 'ngNoInject']);
+// Keep synchronized with the method branches in matchContextualCall.
+const CONTEXTUAL_METHODS = new Set([
+  'decorator', 'factory', 'invoke', 'open', 'provider', 'push', 'register', 'service',
+  'setNestedState', 'show', 'state', 'when'
+]);
 const DEFAULT_MODULE_REGEXP = /^[a-zA-Z0-9_$\.\s]+$/;
 
 module.exports = function annotate(program, code, magicString, options = {}) {
@@ -59,6 +64,7 @@ class Annotator {
     this.skipAnalysis = !this.hasAnnotationCandidates();
     if (this.skipAnalysis) return;
 
+    this.contextualCalls = this.calls.filter(isContextualCallCandidate);
     this.regularInfoCache = new WeakMap();
 
     this.explicitActions = [];
@@ -837,7 +843,7 @@ class Annotator {
   }
 
   collectContextualTargets() {
-    for (const call of this.calls) {
+    for (const call of this.contextualCalls) {
       if (this.processedContextCalls.has(call) || !this.isInContext(call)) continue;
       this.processedContextCalls.add(call);
       this.matchContextualCall(call);
@@ -1520,6 +1526,12 @@ function isImplicitAnnotationCandidate(node) {
   if (callee?.type !== 'MemberExpression' || callee.computed) return false;
   const method = staticPropertyName(callee);
   return method === 'module' || REGISTRATION_METHODS.has(method);
+}
+
+function isContextualCallCandidate(node) {
+  const callee = unwrap(node.callee);
+  return callee?.type === 'MemberExpression' && !callee.computed &&
+    CONTEXTUAL_METHODS.has(staticPropertyName(callee));
 }
 
 function lastSequenceExpression(input) {
