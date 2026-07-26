@@ -284,6 +284,8 @@ class Annotator {
       }
     }
 
+    if (type === 'Literal' ||
+        (type === 'Identifier' && !node.typeAnnotation && !node.decorators?.length)) return;
     forEachChild(node, child => this.visitScope(child, scope, node));
   }
 
