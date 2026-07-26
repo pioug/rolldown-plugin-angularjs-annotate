@@ -345,7 +345,7 @@ class Annotator {
   declare(scope, name, value, declaration, kind) {
     if (!name) return null;
     let binding = scope.bindings.get(name);
-    if (!binding || !['var', 'hoisted'].includes(kind)) {
+    if (!binding || (kind !== 'var' && kind !== 'hoisted')) {
       binding = { name, value: null, declaration: null, kind, scope, statement: null, writes: [], unknownWrites: [] };
       scope.bindings.set(name, binding);
     }
