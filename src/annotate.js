@@ -41,15 +41,16 @@ class Annotator {
     this.parents = new WeakMap();
     this.methodProperties = new WeakMap();
 
-    this.indexAst();
-    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
-    this.skipAnalysis = !this.hasAnnotationCandidates();
-    if (this.skipAnalysis) return;
-
     this.nodeScopes = new WeakMap();
     this.functionScopes = new WeakMap();
     this.bindingByValue = new WeakMap();
     this.bindingByDeclaration = new WeakMap();
+    this.rootScope = this.buildScopes();
+
+    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
+    this.skipAnalysis = !this.hasAnnotationCandidates();
+    if (this.skipAnalysis) return;
+
     this.regularInfoCache = new WeakMap();
 
     this.explicitActions = [];
@@ -70,7 +71,6 @@ class Annotator {
     this.configSeen = new Map();
 
     this.commentByStart = new Map(this.comments.map(comment => [comment.start, comment]));
-    this.rootScope = this.buildScopes();
     this.collectBindingWrites();
   }
 
@@ -102,30 +102,39 @@ class Annotator {
     this.applyInsertions();
   }
 
-  indexAst() {
-    walk(this.program, (node, parent) => {
-      this.nodes.push(node);
-      if (parent) this.parents.set(node, parent);
+  indexNode(node, parent) {
+    this.nodes.push(node);
+    if (parent) this.parents.set(node, parent);
 
-      if (isFunction(node)) {
+    if (isFunction(node)) {
+      this.explicitNodes.push(node);
+      if (!this.hasIndexedCandidate && functionDirective(node) != null) {
+        this.hasIndexedCandidate = true;
+      }
+    } else if (node.type === 'CallExpression') {
+      this.calls.push(node);
+      if (annotationWrapperName(node)) {
         this.explicitNodes.push(node);
-        if (!this.hasIndexedCandidate && functionDirective(node) != null) {
-          this.hasIndexedCandidate = true;
-        }
-      } else if (node.type === 'CallExpression') {
-        this.calls.push(node);
-        if (annotationWrapperName(node)) {
-          this.explicitNodes.push(node);
-          this.hasIndexedCandidate = true;
-        }
-        if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
-          this.hasIndexedCandidate = true;
-        }
+        this.hasIndexedCandidate = true;
       }
+      if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
+        this.hasIndexedCandidate = true;
+      }
+    }
 
-      if (node.type === 'Property' && node.method && isFunction(node.value)) {
-        this.methodProperties.set(node.value, node);
-      }
+    if (node.type === 'Property' && node.method && isFunction(node.value)) {
+      this.methodProperties.set(node.value, node);
+    }
+  }
+
+  indexSubtree(node, parent) {
+    walk(node, (current, currentParent) => this.indexNode(current, currentParent), new WeakSet(), parent);
+  }
+
+  indexUnvisitedChildren(node, visited) {
+    // Scope traversal intentionally skips metadata such as names, decorators, and type annotations.
+    forEachChild(node, child => {
+      if (!visited.has(child)) this.indexSubtree(child, node);
     });
   }
 
@@ -136,16 +145,17 @@ class Annotator {
 
   buildScopes() {
     const root = new Scope('program', null, this.program, this.program);
-    this.visitScope(this.program, root, true);
+    this.visitScope(this.program, root, null, true);
     return root;
   }
 
-  visitScope(node, scope, reuseBlock = false) {
+  visitScope(node, scope, parent = null, reuseBlock = false) {
     if (!isNode(node)) return;
+    this.indexNode(node, parent);
     this.nodeScopes.set(node, scope);
 
     if (node.type === 'Program') {
-      for (const statement of node.body) this.visitScope(statement, scope);
+      for (const statement of node.body) this.visitScope(statement, scope, node);
       return;
     }
 
@@ -161,39 +171,40 @@ class Annotator {
       }
       for (const parameter of node.params || []) {
         this.declarePattern(functionScope, parameter, null, parameter, 'param');
-        this.visitScope(parameter, functionScope);
+        this.visitScope(parameter, functionScope, node);
       }
-      if (node.body?.type === 'BlockStatement') this.visitScope(node.body, functionScope, true);
-      else this.visitScope(node.body, functionScope);
+      if (node.body?.type === 'BlockStatement') this.visitScope(node.body, functionScope, node, true);
+      else this.visitScope(node.body, functionScope, node);
+      this.indexUnvisitedChildren(node, new Set([...(node.params || []), node.body]));
       return;
     }
 
     if (node.type === 'BlockStatement') {
       const blockScope = reuseBlock ? scope : new Scope('block', scope, node, node);
       this.nodeScopes.set(node, blockScope);
-      for (const statement of node.body) this.visitScope(statement, blockScope);
+      for (const statement of node.body) this.visitScope(statement, blockScope, node);
       return;
     }
 
     if (node.type === 'StaticBlock') {
       const blockScope = new Scope('static-block', scope, node, node);
       this.nodeScopes.set(node, blockScope);
-      for (const statement of node.body || []) this.visitScope(statement, blockScope);
+      for (const statement of node.body || []) this.visitScope(statement, blockScope, node);
       return;
     }
 
     if (node.type === 'SwitchStatement') {
-      this.visitScope(node.discriminant, scope);
+      this.visitScope(node.discriminant, scope, node);
       const switchScope = new Scope('block', scope, node, null);
       this.nodeScopes.set(node, switchScope);
-      for (const switchCase of node.cases || []) this.visitScope(switchCase, switchScope);
+      for (const switchCase of node.cases || []) this.visitScope(switchCase, switchScope, node);
       return;
     }
 
     if (node.type === 'ForStatement' || node.type === 'ForInStatement' || node.type === 'ForOfStatement') {
       const loopScope = new Scope('block', scope, node, null);
       this.nodeScopes.set(node, loopScope);
-      forEachChild(node, child => this.visitScope(child, loopScope));
+      forEachChild(node, child => this.visitScope(child, loopScope, node));
       return;
     }
 
@@ -202,9 +213,9 @@ class Annotator {
       this.nodeScopes.set(node, catchScope);
       if (node.param) {
         this.declarePattern(catchScope, node.param, null, node.param, 'caught');
-        this.visitScope(node.param, catchScope);
+        this.visitScope(node.param, catchScope, node);
       }
-      this.visitScope(node.body, catchScope, true);
+      this.visitScope(node.body, catchScope, node, true);
       return;
     }
 
@@ -214,17 +225,19 @@ class Annotator {
       }
       const classScope = new Scope('class', scope, node, null);
       if (node.id) this.declare(classScope, node.id.name, node, node, 'class-name');
-      if (node.superClass) this.visitScope(node.superClass, scope);
-      this.visitScope(node.body, classScope);
+      if (node.superClass) this.visitScope(node.superClass, scope, node);
+      this.visitScope(node.body, classScope, node);
+      this.indexUnvisitedChildren(node, new Set([node.superClass, node.body]));
       return;
     }
 
     if (node.type === 'VariableDeclaration') {
       for (const declarator of node.declarations) {
+        this.parents.set(declarator, node);
         const targetScope = node.kind === 'var' ? nearestFunctionScope(scope) : scope;
         this.declarePattern(targetScope, declarator.id, declarator.init, declarator, node.kind);
       }
-      forEachChild(node, child => this.visitScope(child, scope));
+      forEachChild(node, child => this.visitScope(child, scope, node));
       return;
     }
 
@@ -234,7 +247,7 @@ class Annotator {
       }
     }
 
-    forEachChild(node, child => this.visitScope(child, scope));
+    forEachChild(node, child => this.visitScope(child, scope, node));
   }
 
   declarePattern(scope, pattern, value, declaration, kind) {
