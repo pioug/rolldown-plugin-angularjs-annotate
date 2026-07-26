@@ -40,10 +40,12 @@ class Annotator {
     this.moduleRegexp = normalizeModuleRegexp(this.options.regexp);
 
     this.comments = normalizeComments(this.options.comments);
-    this.commentProtectedNodes = this.comments == null && /\/[/*]/.test(this.code) ? [] : null;
-    const hasExplicitComment = this.comments ?
+    const mayHaveExplicitComment = this.comments ?
       this.comments.some(comment => comment.annotation != null) :
       this.code.includes('@ngInject') || this.code.includes('@ngNoInject');
+    this.commentProtectedNodes = this.comments == null && mayHaveExplicitComment &&
+      /\/[/*]/.test(this.code) ? [] : null;
+    const hasExplicitComment = mayHaveExplicitComment;
     this.explicitCandidateNodes = hasExplicitComment ? [] : null;
     this.writeNodes = [];
     this.existingAnnotationNodes = [];
@@ -1553,6 +1555,10 @@ function scopeInsertionPosition(scope) {
 
 function normalizeComments(comments) {
   if (!Array.isArray(comments)) return null;
+  if (!comments.some(comment => {
+    const value = comment.value || '';
+    return String(value).includes('@ng') && commentAnnotation(value) != null;
+  })) return [];
   return comments.map(comment => {
     const value = comment.value || '';
     return {
