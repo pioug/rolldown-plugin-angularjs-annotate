@@ -192,7 +192,7 @@ class Annotator {
   visitScope(node, scope, parent = null, reuseBlock = false) {
     const type = node.type;
     const functionNode = this.indexNode(node, parent, type);
-    this.nodeScopes.set(node, scope);
+    if (type === 'Identifier') this.nodeScopes.set(node, scope);
 
     if (type === 'Program') {
       for (const statement of node.body) this.visitScope(statement, scope, node);
@@ -221,14 +221,12 @@ class Annotator {
 
     if (type === 'BlockStatement') {
       const blockScope = reuseBlock ? scope : new Scope('block', scope, node, node);
-      this.nodeScopes.set(node, blockScope);
       for (const statement of node.body) this.visitScope(statement, blockScope, node);
       return;
     }
 
     if (type === 'StaticBlock') {
       const blockScope = new Scope('static-block', scope, node, node);
-      this.nodeScopes.set(node, blockScope);
       for (const statement of node.body || []) this.visitScope(statement, blockScope, node);
       return;
     }
@@ -236,21 +234,18 @@ class Annotator {
     if (type === 'SwitchStatement') {
       this.visitScope(node.discriminant, scope, node);
       const switchScope = new Scope('block', scope, node, null);
-      this.nodeScopes.set(node, switchScope);
       for (const switchCase of node.cases || []) this.visitScope(switchCase, switchScope, node);
       return;
     }
 
     if (type === 'ForStatement' || type === 'ForInStatement' || type === 'ForOfStatement') {
       const loopScope = new Scope('block', scope, node, null);
-      this.nodeScopes.set(node, loopScope);
       forEachChild(node, visitScopeChild, this, loopScope);
       return;
     }
 
     if (type === 'CatchClause') {
       const catchScope = new Scope('block', scope, node, node.body);
-      this.nodeScopes.set(node, catchScope);
       if (node.param) {
         this.declarePattern(catchScope, node.param, null, node.param, 'caught');
         this.visitScope(node.param, catchScope, node);
