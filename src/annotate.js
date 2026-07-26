@@ -112,15 +112,16 @@ class Annotator {
 
   indexNode(node, parent) {
     if (parent) this.parents.set(node, parent);
+    const type = node.type;
 
     if (this.explicitCandidateNodes && explicitPriority(node) < 100) {
       this.explicitCandidateNodes.push(node);
     }
     if (this.commentProtectedNodes &&
-        (node.type === 'Literal' || node.type === 'TemplateElement' || node.type === 'JSXText')) {
+        (type === 'Literal' || type === 'TemplateElement' || type === 'JSXText')) {
       this.commentProtectedNodes.push(node);
     }
-    switch (node.type) {
+    switch (type) {
       case 'AccessorProperty':
       case 'AssignmentExpression':
       case 'FieldDefinition':
@@ -133,13 +134,14 @@ class Annotator {
         break;
     }
 
-    const functionNode = isFunction(node);
+    const functionNode =
+      type === 'ArrowFunctionExpression' || type === 'FunctionDeclaration' || type === 'FunctionExpression';
     if (functionNode) {
       this.explicitNodes.push(node);
       if (!this.hasIndexedCandidate && functionDirective(node) != null) {
         this.hasIndexedCandidate = true;
       }
-    } else if (node.type === 'CallExpression') {
+    } else if (type === 'CallExpression') {
       this.calls.push(node);
       if (annotationWrapperName(node)) {
         this.explicitNodes.push(node);
@@ -150,7 +152,7 @@ class Annotator {
       }
     }
 
-    if (node.type === 'Property' && node.method && isFunction(node.value)) {
+    if (type === 'Property' && node.method && isFunction(node.value)) {
       this.methodProperties.set(node.value, node);
     }
     return functionNode;
