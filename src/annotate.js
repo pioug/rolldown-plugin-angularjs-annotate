@@ -719,7 +719,8 @@ class Annotator {
     if (method === 'invoke' && object?.type === 'Identifier' && object.name === '$injector') {
       return null;
     }
-    if (['decorator', 'factory', 'provider', 'service'].includes(method) && object?.type === 'Identifier' && object.name === '$provide') {
+    if (object?.type === 'Identifier' && object.name === '$provide' &&
+        ['decorator', 'factory', 'provider', 'service'].includes(method)) {
       return null;
     }
 
