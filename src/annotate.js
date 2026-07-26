@@ -292,7 +292,7 @@ class Annotator {
     if (type === 'VariableDeclaration') {
       for (const declarator of node.declarations) {
         this.parents.set(declarator, node);
-        const targetScope = node.kind === 'var' ? nearestFunctionScope(scope) : scope;
+        const targetScope = node.kind === 'var' ? scope.varScope : scope;
         this.declarePattern(targetScope, declarator.id, declarator.init, declarator, node.kind);
       }
       forEachChild(node, visitScopeChild, this, scope);
@@ -482,8 +482,8 @@ class Annotator {
       binding = outer;
     }
 
-    const referenceFunction = nearestFunctionScope(this.nodeScopes.get(reference));
-    const bindingFunction = nearestFunctionScope(binding.scope);
+    const referenceFunction = this.nodeScopes.get(reference).varScope;
+    const bindingFunction = binding.scope.varScope;
     if ((binding.unknownWrites.length || binding.writes.length > 1) && referenceFunction !== bindingFunction) return null;
     if (binding.unknownWrites.some(write => write.start <= reference.start)) return null;
 
@@ -1510,6 +1510,7 @@ class Scope {
     this.node = node;
     this.body = body;
     this.bindings = new Map();
+    this.varScope = type === 'function' || type === 'program' || type === 'static-block' ? this : parent.varScope;
   }
 }
 
@@ -1517,13 +1518,6 @@ function normalizeModuleRegexp(value) {
   if (!value) return DEFAULT_MODULE_REGEXP;
   if (value instanceof RegExp) return new RegExp(value.source, value.flags.replace(/[gy]/g, ''));
   return new RegExp(value);
-}
-
-function nearestFunctionScope(scope) {
-  while (scope.parent && scope.type !== 'function' && scope.type !== 'program' && scope.type !== 'static-block') {
-    scope = scope.parent;
-  }
-  return scope;
 }
 
 function branchExpressions(node) {
