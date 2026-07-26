@@ -127,7 +127,7 @@ class Annotator {
   }
 
   indexNode(node, parent, type = node.type) {
-    if (parent && type !== 'Identifier') this.parents.set(node, parent);
+    if (parent && type !== 'Identifier' && type !== 'Literal') this.parents.set(node, parent);
 
     if (this.explicitCandidateNodes && explicitPriority(node) < 100) {
       this.explicitCandidateNodes.push(node);
