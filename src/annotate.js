@@ -1705,8 +1705,9 @@ function isNode(value) {
 }
 
 function forEachChild(node, callback) {
-  for (const [key, value] of Object.entries(node)) {
+  for (const key of Object.keys(node)) {
     if (key === 'loc' || key === 'start' || key === 'end') continue;
+    const value = node[key];
     if (Array.isArray(value)) {
       for (const child of value) if (isNode(child)) callback(child, key);
     } else if (isNode(value)) {
