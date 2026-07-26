@@ -50,6 +50,9 @@ class Annotator {
     this.writeNodes = [];
     this.existingAnnotationNodes = [];
     this.calls = [];
+    this.contextualCalls = [];
+    this.regularCalls = [];
+    this.indexCallCandidates = hasExplicitComment && !this.options.explicitOnly;
     this.explicitDirectives = [];
     this.annotationWrappers = [];
     this.hasIndexedCandidate = false;
@@ -68,17 +71,6 @@ class Annotator {
     this.skipAnalysis = !this.hasAnnotationCandidates();
     if (this.skipAnalysis) return;
 
-    this.contextualCalls = [];
-    this.regularCalls = [];
-    if (!this.options.explicitOnly) {
-      for (const call of this.calls) {
-        const callee = unwrap(call.callee);
-        if (callee?.type !== 'MemberExpression' || callee.computed) continue;
-        const method = staticPropertyName(callee);
-        if (CONTEXTUAL_METHODS.has(method)) this.contextualCalls.push(call);
-        if (method === 'module' || REGISTRATION_METHODS.has(method)) this.regularCalls.push(call);
-      }
-    }
     this.regularInfoCache = new WeakMap();
 
     this.explicitActions = [];
@@ -151,18 +143,23 @@ class Annotator {
           if (directive != null) {
             this.explicitDirectives.push({ node, directive });
             this.hasIndexedCandidate = true;
+            this.startIndexingCallCandidates();
           }
         }
         break;
       case 'CallExpression': {
         this.calls.push(node);
+        if (this.indexCallCandidates) this.indexCallCandidate(node);
         const wrapper = annotationWrapperName(node);
         if (wrapper) {
           this.annotationWrappers.push({ node, wrapper });
           this.hasIndexedCandidate = true;
+          this.startIndexingCallCandidates();
         }
-        if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
+        if (!this.indexCallCandidates && !this.options.explicitOnly &&
+            !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
           this.hasIndexedCandidate = true;
+          this.startIndexingCallCandidates();
         }
         break;
       }
@@ -190,6 +187,20 @@ class Annotator {
         break;
     }
     return functionNode;
+  }
+
+  startIndexingCallCandidates() {
+    if (this.options.explicitOnly || this.indexCallCandidates) return;
+    this.indexCallCandidates = true;
+    for (const call of this.calls) this.indexCallCandidate(call);
+  }
+
+  indexCallCandidate(call) {
+    const callee = unwrap(call.callee);
+    if (callee?.type !== 'MemberExpression' || callee.computed) return;
+    const method = staticPropertyName(callee);
+    if (CONTEXTUAL_METHODS.has(method)) this.contextualCalls.push(call);
+    if (method === 'module' || REGISTRATION_METHODS.has(method)) this.regularCalls.push(call);
   }
 
   indexSubtree(node, parent) {
