@@ -59,7 +59,7 @@ class Annotator {
     this.blockedWrites = new Set();
     this.contextRoots = new WeakSet();
     this.contextRootCount = 0;
-    this.processedHelpers = new WeakSet();
+    this.processedContextCalls = new WeakSet();
     this.processedMethods = new WeakMap();
     this.queue = [];
 
@@ -792,8 +792,9 @@ class Annotator {
 
   collectContextualTargets() {
     for (const call of this.calls) {
-      if (this.processedHelpers.has(call) || !this.isInContext(call)) continue;
-      if (this.matchContextualCall(call)) this.processedHelpers.add(call);
+      if (this.processedContextCalls.has(call) || !this.isInContext(call)) continue;
+      this.processedContextCalls.add(call);
+      this.matchContextualCall(call);
     }
   }
 
