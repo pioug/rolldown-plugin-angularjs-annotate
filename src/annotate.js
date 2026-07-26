@@ -1081,7 +1081,7 @@ class Annotator {
   }
 
   processMethodContext(node, method) {
-    if (!method) return;
+    if (method !== 'provider' && method !== 'directive') return;
     let methods = this.processedMethods.get(node);
     if (!methods) this.processedMethods.set(node, methods = new Set());
     if (methods.has(method)) return;
