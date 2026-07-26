@@ -42,7 +42,7 @@ class Annotator {
     this.comments = normalizeComments(this.options.comments);
     this.commentProtectedNodes = this.comments == null && /\/[/*]/.test(this.code) ? [] : null;
     const hasExplicitComment = this.comments ?
-      this.comments.some(comment => commentAnnotation(comment.value) != null) :
+      this.comments.some(comment => comment.annotation != null) :
       this.code.includes('@ngInject') || this.code.includes('@ngNoInject');
     this.explicitCandidateNodes = hasExplicitComment ? [] : null;
     this.writeAndAnnotationNodes = [];
@@ -179,7 +179,7 @@ class Annotator {
   }
 
   hasAnnotationCandidates() {
-    if (this.comments.some(comment => commentAnnotation(comment.value) != null)) return true;
+    if (this.comments.some(comment => comment.annotation != null)) return true;
     return this.hasIndexedCandidate;
   }
 
@@ -501,7 +501,7 @@ class Annotator {
   collectExplicitActions() {
     let candidates;
     for (const comment of this.comments) {
-      const annotation = commentAnnotation(comment.value);
+      const annotation = comment.annotation;
       if (annotation == null) continue;
       candidates ||= this.explicitCandidates();
       const node = this.nextAnnotatedNode(comment, candidates);
@@ -1406,7 +1406,7 @@ class Annotator {
       const statements = binding.scope?.body?.body || [];
       if (statements.length === 0 || directiveValue(statements[0]) == null) {
         const marker = this.comments.find(comment => comment.end <= position &&
-          commentAnnotation(comment.value) != null && this.isTrivia(comment.end, position));
+          comment.annotation != null && this.isTrivia(comment.end, position));
         if (marker) {
           const leadingComment = this.comments.find(comment => comment.end <= position && this.isTrivia(comment.end, position));
           position = leadingComment?.start ?? marker.start;
@@ -1553,11 +1553,15 @@ function scopeInsertionPosition(scope) {
 
 function normalizeComments(comments) {
   if (!Array.isArray(comments)) return null;
-  return comments.map(comment => ({
-    value: comment.value || '',
-    start: comment.start,
-    end: comment.end,
-  })).sort((left, right) => left.start - right.start);
+  return comments.map(comment => {
+    const value = comment.value || '';
+    return {
+      value,
+      annotation: commentAnnotation(value),
+      start: comment.start,
+      end: comment.end,
+    };
+  }).sort((left, right) => left.start - right.start);
 }
 
 function scanComments(code, protectedNodes) {
@@ -1576,8 +1580,10 @@ function scanComments(code, protectedNodes) {
     const range = protectedRanges[rangeIndex];
     if (range && start >= range[0] && start < range[1]) continue;
     const block = match[0].startsWith('/*');
+    const value = block ? match[0].slice(2, -2) : match[0].slice(2);
     comments.push({
-      value: block ? match[0].slice(2, -2) : match[0].slice(2),
+      value,
+      annotation: commentAnnotation(value),
       start,
       end: start + match[0].length,
     });
