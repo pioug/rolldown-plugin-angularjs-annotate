@@ -70,6 +70,23 @@ test('Transform consistently with standalone and native MagicString', () => {
   assert.ok(standalone.map);
 });
 
+test('Ignore inherited fields on native AST nodes', () => {
+  const code = `const padding = '${'.'.repeat(80)}';`;
+  const program = parseSync('test.js', code, { sourceType: 'unambiguous' }).program;
+  const inherited = parseSync(
+    'inherited.js',
+    "function inherited(inheritedDep) { 'ngInject'; }",
+    { sourceType: 'unambiguous' },
+  ).program.body[0];
+  Object.setPrototypeOf(program.body[0].declarations[0], { inherited });
+
+  const result = transform(angularjsAnnotate(), code, 'test.js', {
+    ast: program,
+    magicString: new MagicString(code),
+  });
+  assert.equal(result, undefined);
+});
+
 test('Scan explicit comments from a native AST without matching literal text', () => {
   const code = [
     "const example = '/* @ngInject */';",

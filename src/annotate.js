@@ -1768,7 +1768,10 @@ function isNode(value) {
 }
 
 function forEachChild(node, callback) {
-  for (const key of Object.keys(node)) {
+  const prototype = Object.getPrototypeOf(node);
+  const checkOwn = prototype !== Object.prototype && prototype !== null;
+  for (const key in node) {
+    if (checkOwn && !Object.hasOwn(node, key)) continue;
     if (key === 'loc' || key === 'start' || key === 'end') continue;
     const value = node[key];
     if (Array.isArray(value)) {
