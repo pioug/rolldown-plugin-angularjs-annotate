@@ -1588,7 +1588,9 @@ function scanComments(code, protectedNodes) {
 }
 
 function commentAnnotation(value) {
-  for (const line of String(value).split(/\r?\n/)) {
+  value = String(value);
+  if (!value.includes('@ng')) return null;
+  for (const line of value.split(/\r?\n/)) {
     const normalized = line.replace(/^[\s*]*/, '').replace(/[\s*]*$/, '').trim();
     if (normalized === '@ngInject') return true;
     if (normalized === '@ngNoInject') return false;
