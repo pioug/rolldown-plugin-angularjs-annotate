@@ -110,9 +110,8 @@ class Annotator {
     this.applyInsertions();
   }
 
-  indexNode(node, parent) {
+  indexNode(node, parent, type = node.type) {
     if (parent) this.parents.set(node, parent);
-    const type = node.type;
 
     if (this.explicitCandidateNodes && explicitPriority(node) < 100) {
       this.explicitCandidateNodes.push(node);
@@ -182,22 +181,23 @@ class Annotator {
 
   visitScope(node, scope, parent = null, reuseBlock = false) {
     if (!isNode(node)) return;
-    const functionNode = this.indexNode(node, parent);
+    const type = node.type;
+    const functionNode = this.indexNode(node, parent, type);
     this.nodeScopes.set(node, scope);
 
-    if (node.type === 'Program') {
+    if (type === 'Program') {
       for (const statement of node.body) this.visitScope(statement, scope, node);
       return;
     }
 
     if (functionNode) {
-      if (node.type === 'FunctionDeclaration' && node.id) {
+      if (type === 'FunctionDeclaration' && node.id) {
         this.declare(scope, node.id.name, node, node, 'hoisted');
       }
 
       const functionScope = new Scope('function', scope, node, node.body?.type === 'BlockStatement' ? node.body : null);
       this.functionScopes.set(node, functionScope);
-      if (node.type !== 'FunctionDeclaration' && node.id) {
+      if (type !== 'FunctionDeclaration' && node.id) {
         this.declare(functionScope, node.id.name, node, node, 'function-name');
       }
       for (const parameter of node.params || []) {
@@ -210,21 +210,21 @@ class Annotator {
       return;
     }
 
-    if (node.type === 'BlockStatement') {
+    if (type === 'BlockStatement') {
       const blockScope = reuseBlock ? scope : new Scope('block', scope, node, node);
       this.nodeScopes.set(node, blockScope);
       for (const statement of node.body) this.visitScope(statement, blockScope, node);
       return;
     }
 
-    if (node.type === 'StaticBlock') {
+    if (type === 'StaticBlock') {
       const blockScope = new Scope('static-block', scope, node, node);
       this.nodeScopes.set(node, blockScope);
       for (const statement of node.body || []) this.visitScope(statement, blockScope, node);
       return;
     }
 
-    if (node.type === 'SwitchStatement') {
+    if (type === 'SwitchStatement') {
       this.visitScope(node.discriminant, scope, node);
       const switchScope = new Scope('block', scope, node, null);
       this.nodeScopes.set(node, switchScope);
@@ -232,14 +232,14 @@ class Annotator {
       return;
     }
 
-    if (node.type === 'ForStatement' || node.type === 'ForInStatement' || node.type === 'ForOfStatement') {
+    if (type === 'ForStatement' || type === 'ForInStatement' || type === 'ForOfStatement') {
       const loopScope = new Scope('block', scope, node, null);
       this.nodeScopes.set(node, loopScope);
       forEachChild(node, child => this.visitScope(child, loopScope, node));
       return;
     }
 
-    if (node.type === 'CatchClause') {
+    if (type === 'CatchClause') {
       const catchScope = new Scope('block', scope, node, node.body);
       this.nodeScopes.set(node, catchScope);
       if (node.param) {
@@ -250,8 +250,8 @@ class Annotator {
       return;
     }
 
-    if (isClass(node)) {
-      if (node.type === 'ClassDeclaration' && node.id) {
+    if (type === 'ClassDeclaration' || type === 'ClassExpression') {
+      if (type === 'ClassDeclaration' && node.id) {
         this.declare(scope, node.id.name, node, node, 'class');
       }
       const classScope = new Scope('class', scope, node, null);
@@ -262,7 +262,7 @@ class Annotator {
       return;
     }
 
-    if (node.type === 'VariableDeclaration') {
+    if (type === 'VariableDeclaration') {
       for (const declarator of node.declarations) {
         this.parents.set(declarator, node);
         const targetScope = node.kind === 'var' ? nearestFunctionScope(scope) : scope;
@@ -272,7 +272,7 @@ class Annotator {
       return;
     }
 
-    if (node.type === 'ImportDeclaration') {
+    if (type === 'ImportDeclaration') {
       for (const specifier of node.specifiers || []) {
         if (specifier.local) this.declare(scope, specifier.local.name, null, specifier, 'import');
       }
