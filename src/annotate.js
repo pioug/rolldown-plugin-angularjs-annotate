@@ -297,7 +297,9 @@ class Annotator {
         const targetScope = node.kind === 'var' ? scope.varScope : scope;
         this.declarePattern(targetScope, declarator.id, declarator.init, declarator, node.kind);
       }
-      forEachChild(node, visitScopeChild, this, scope);
+      for (const declarator of node.declarations) {
+        forEachChild(declarator, visitScopeChild, this, scope);
+      }
       return;
     }
 
