@@ -45,7 +45,8 @@ class Annotator {
       this.comments.some(comment => comment.annotation != null) :
       this.code.includes('@ngInject') || this.code.includes('@ngNoInject');
     this.explicitCandidateNodes = hasExplicitComment ? [] : null;
-    this.writeAndAnnotationNodes = [];
+    this.writeNodes = [];
+    this.existingAnnotationNodes = [];
     this.calls = [];
     this.explicitNodes = [];
     this.hasIndexedCandidate = false;
@@ -162,15 +163,22 @@ class Annotator {
           this.methodProperties.set(node.value, node);
         }
         break;
-      case 'AccessorProperty':
       case 'AssignmentExpression':
+        this.writeNodes.push(node);
+        if (isInjectMember(node.left)) this.existingAnnotationNodes.push(node);
+        break;
+      case 'AccessorProperty':
       case 'FieldDefinition':
-      case 'ForInStatement':
-      case 'ForOfStatement':
       case 'MethodDefinition':
       case 'PropertyDefinition':
+        if (node.static && staticPropertyName(node) === '$inject') {
+          this.existingAnnotationNodes.push(node);
+        }
+        break;
+      case 'ForInStatement':
+      case 'ForOfStatement':
       case 'UpdateExpression':
-        this.writeAndAnnotationNodes.push(node);
+        this.writeNodes.push(node);
         break;
     }
     return functionNode;
@@ -371,7 +379,7 @@ class Annotator {
   }
 
   collectBindingWrites() {
-    for (const node of this.writeAndAnnotationNodes) {
+    for (const node of this.writeNodes) {
       if (node.type === 'AssignmentExpression') {
         if (node.left?.type === 'Identifier' && node.operator === '=') {
           const binding = this.bindingFor(node.left);
@@ -486,8 +494,8 @@ class Annotator {
   }
 
   collectExistingAnnotations() {
-    for (const node of this.writeAndAnnotationNodes) {
-      if (node.type === 'AssignmentExpression' && isInjectMember(node.left)) {
+    for (const node of this.existingAnnotationNodes) {
+      if (node.type === 'AssignmentExpression') {
         const object = unwrap(node.left.object);
         if (object?.type === 'Identifier') {
           const binding = this.bindingFor(object);
@@ -495,10 +503,7 @@ class Annotator {
           if (effective?.write) this.blockedWrites.add(effective.write);
           else if (binding) this.blockedBindings.add(binding);
         }
-      }
-      if ((node.type === 'PropertyDefinition' || node.type === 'FieldDefinition' ||
-           node.type === 'AccessorProperty' || node.type === 'MethodDefinition') &&
-          node.static && staticPropertyName(node) === '$inject') {
+      } else {
         const classNode = this.findAncestor(node, isClass);
         if (classNode) {
           this.blockedNodes.add(classNode);
