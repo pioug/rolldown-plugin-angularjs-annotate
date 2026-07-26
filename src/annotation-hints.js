@@ -7,8 +7,9 @@ const REGISTRATION_METHOD_NAMES = [
 const EXPLICIT_ANNOTATION_NAMES = ['ngInject', 'ngNoInject'];
 
 const REGISTRATION_METHODS = new Set(REGISTRATION_METHOD_NAMES);
-// Escaped identifiers may decode to a supported name, and comments are legal after a member-access dot.
-const EXPLICIT_ANNOTATION_PATTERN = String.raw`\\|\b(?:${EXPLICIT_ANNOTATION_NAMES.join('|')})\b`;
+// Escaped identifiers may decode to a supported name, and string directives may use other escape forms.
+const SOURCE_ESCAPE_PATTERN = String.raw`\\(?:u(?:[0-9a-fA-F]{4}|\{[0-9a-fA-F]+\})|x[0-9a-fA-F]{2}|[0-7]{1,3}|\r\n|[\n\r\u2028\u2029])`;
+const EXPLICIT_ANNOTATION_PATTERN = String.raw`${SOURCE_ESCAPE_PATTERN}|\b(?:${EXPLICIT_ANNOTATION_NAMES.join('|')})\b`;
 const MEMBER_TRIVIA = String.raw`(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*(?:\r\n?|\n|$))*`;
 const IMPLICIT_METHOD_PATTERN = [
   'module',

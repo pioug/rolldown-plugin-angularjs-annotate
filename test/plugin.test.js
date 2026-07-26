@@ -123,7 +123,7 @@ test('Skip the transform hook when code has no annotation hints', async () => {
   assert.equal(transforms, 0);
 });
 
-test('Keep escaped annotation candidates inside the native code filter', async () => {
+test('Keep supported escaped annotation candidates inside the native code filter', async () => {
   const implicit = await bundleVirtual(
     angularjsAnnotate(),
     "angular.module('x').contr\\u006fller('name', function(dep) {});",
@@ -137,6 +137,17 @@ test('Keep escaped annotation candidates inside the native code filter', async (
 
   assert.match(implicit, /\["dep", function\(dep\)/);
   assert.match(explicit, /handler\.\$inject = \["dep"\]/);
+
+  const codeFilter = angularjsAnnotate().transform.filter.code;
+  const lineContinuation = ["function handler(dep) { 'ngIn\\", "ject'; }"].join('\n');
+  for (const code of [
+    String.raw`function handler(dep) { 'ng\x49nject'; }`,
+    String.raw`function handler(dep) { 'ng\111nject'; }`,
+    lineContinuation,
+  ]) {
+    assert.equal(codeFilter.test(code), true);
+  }
+  assert.equal(codeFilter.test(String.raw`const pattern = /\d+/; const text = 'line\n';`), false);
 });
 
 test('Allow comments between member access and implicit annotation methods', async () => {
