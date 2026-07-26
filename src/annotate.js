@@ -132,7 +132,8 @@ class Annotator {
         break;
     }
 
-    if (isFunction(node)) {
+    const functionNode = isFunction(node);
+    if (functionNode) {
       this.explicitNodes.push(node);
       if (!this.hasIndexedCandidate && functionDirective(node) != null) {
         this.hasIndexedCandidate = true;
@@ -151,6 +152,7 @@ class Annotator {
     if (node.type === 'Property' && node.method && isFunction(node.value)) {
       this.methodProperties.set(node.value, node);
     }
+    return functionNode;
   }
 
   indexSubtree(node, parent) {
@@ -177,7 +179,7 @@ class Annotator {
 
   visitScope(node, scope, parent = null, reuseBlock = false) {
     if (!isNode(node)) return;
-    this.indexNode(node, parent);
+    const functionNode = this.indexNode(node, parent);
     this.nodeScopes.set(node, scope);
 
     if (node.type === 'Program') {
@@ -185,7 +187,7 @@ class Annotator {
       return;
     }
 
-    if (isFunction(node)) {
+    if (functionNode) {
       if (node.type === 'FunctionDeclaration' && node.id) {
         this.declare(scope, node.id.name, node, node, 'hoisted');
       }
