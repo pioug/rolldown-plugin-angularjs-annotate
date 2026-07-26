@@ -36,6 +36,8 @@ class Annotator {
 
     this.nodes = [];
     this.calls = [];
+    this.explicitNodes = [];
+    this.hasIndexedCandidate = false;
     this.parents = new WeakMap();
     this.methodProperties = new WeakMap();
 
@@ -103,10 +105,24 @@ class Annotator {
   indexAst() {
     walk(this.program, (node, parent) => {
       this.nodes.push(node);
-      if (parent) {
-        this.parents.set(node, parent);
+      if (parent) this.parents.set(node, parent);
+
+      if (isFunction(node)) {
+        this.explicitNodes.push(node);
+        if (!this.hasIndexedCandidate && functionDirective(node) != null) {
+          this.hasIndexedCandidate = true;
+        }
+      } else if (node.type === 'CallExpression') {
+        this.calls.push(node);
+        if (annotationWrapperName(node)) {
+          this.explicitNodes.push(node);
+          this.hasIndexedCandidate = true;
+        }
+        if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
+          this.hasIndexedCandidate = true;
+        }
       }
-      if (node.type === 'CallExpression') this.calls.push(node);
+
       if (node.type === 'Property' && node.method && isFunction(node.value)) {
         this.methodProperties.set(node.value, node);
       }
@@ -115,16 +131,7 @@ class Annotator {
 
   hasAnnotationCandidates() {
     if (this.comments.some(comment => commentAnnotation(comment.value) != null)) return true;
-    if (this.nodes.some(node => isFunction(node) && functionDirective(node) != null)) return true;
-    if (this.calls.some(call => annotationWrapperName(call))) return true;
-    if (this.options.explicitOnly) return false;
-
-    return this.calls.some(call => {
-      const callee = unwrap(call.callee);
-      if (callee?.type !== 'MemberExpression' || callee.computed) return false;
-      const method = staticPropertyName(callee);
-      return method === 'module' || REGISTRATION_METHODS.has(method);
-    });
+    return this.hasIndexedCandidate;
   }
 
   buildScopes() {
@@ -462,7 +469,7 @@ class Annotator {
       for (const target of targets) this.explicitActions.push({ node: target, annotate: annotation });
     }
 
-    for (const node of this.nodes) {
+    for (const node of this.explicitNodes) {
       if (isFunction(node)) {
         const directive = functionDirective(node);
         if (directive != null && !this.suppressedFunctionDirectives.has(node)) {
@@ -1459,6 +1466,13 @@ function annotationWrapperName(node) {
   if (node?.type !== 'CallExpression' || node.arguments.length !== 1) return null;
   const callee = unwrap(node.callee);
   return callee?.type === 'Identifier' && ANNOTATION_WRAPPER_NAMES.has(callee.name) ? callee.name : null;
+}
+
+function isImplicitAnnotationCandidate(node) {
+  const callee = unwrap(node.callee);
+  if (callee?.type !== 'MemberExpression' || callee.computed) return false;
+  const method = staticPropertyName(callee);
+  return method === 'module' || REGISTRATION_METHODS.has(method);
 }
 
 function lastSequenceExpression(input) {
