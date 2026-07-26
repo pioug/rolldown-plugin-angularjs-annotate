@@ -1507,7 +1507,7 @@ class Scope {
 }
 
 function normalizeModuleRegexp(value) {
-  if (!value) return new RegExp(DEFAULT_MODULE_REGEXP.source);
+  if (!value) return DEFAULT_MODULE_REGEXP;
   if (value instanceof RegExp) return new RegExp(value.source, value.flags.replace(/[gy]/g, ''));
   return new RegExp(value);
 }
