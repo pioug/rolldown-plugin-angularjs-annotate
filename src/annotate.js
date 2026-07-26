@@ -44,10 +44,11 @@ class Annotator {
     this.calls = [];
     this.explicitNodes = [];
     this.hasIndexedCandidate = false;
-    this.parents = new WeakMap();
-    this.methodProperties = new WeakMap();
+    // The annotator already owns the AST for exactly the lifetime of these indexes.
+    this.parents = new Map();
+    this.nodeScopes = new Map();
 
-    this.nodeScopes = new WeakMap();
+    this.methodProperties = new WeakMap();
     this.functionScopes = new WeakMap();
     this.bindingByValue = new WeakMap();
     this.bindingByDeclaration = new WeakMap();
