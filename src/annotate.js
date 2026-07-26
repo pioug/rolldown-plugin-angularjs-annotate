@@ -127,7 +127,32 @@ class Annotator {
         (type === 'Literal' || type === 'TemplateElement' || type === 'JSXText')) {
       this.commentProtectedNodes.push(node);
     }
+    let functionNode = false;
     switch (type) {
+      case 'ArrowFunctionExpression':
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+        functionNode = true;
+        this.explicitNodes.push(node);
+        if (!this.hasIndexedCandidate && functionDirective(node) != null) {
+          this.hasIndexedCandidate = true;
+        }
+        break;
+      case 'CallExpression':
+        this.calls.push(node);
+        if (annotationWrapperName(node)) {
+          this.explicitNodes.push(node);
+          this.hasIndexedCandidate = true;
+        }
+        if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
+          this.hasIndexedCandidate = true;
+        }
+        break;
+      case 'Property':
+        if (node.method && isFunction(node.value)) {
+          this.methodProperties.set(node.value, node);
+        }
+        break;
       case 'AccessorProperty':
       case 'AssignmentExpression':
       case 'FieldDefinition':
@@ -138,28 +163,6 @@ class Annotator {
       case 'UpdateExpression':
         this.writeAndAnnotationNodes.push(node);
         break;
-    }
-
-    const functionNode =
-      type === 'ArrowFunctionExpression' || type === 'FunctionDeclaration' || type === 'FunctionExpression';
-    if (functionNode) {
-      this.explicitNodes.push(node);
-      if (!this.hasIndexedCandidate && functionDirective(node) != null) {
-        this.hasIndexedCandidate = true;
-      }
-    } else if (type === 'CallExpression') {
-      this.calls.push(node);
-      if (annotationWrapperName(node)) {
-        this.explicitNodes.push(node);
-        this.hasIndexedCandidate = true;
-      }
-      if (!this.options.explicitOnly && !this.hasIndexedCandidate && isImplicitAnnotationCandidate(node)) {
-        this.hasIndexedCandidate = true;
-      }
-    }
-
-    if (type === 'Property' && node.method && isFunction(node.value)) {
-      this.methodProperties.set(node.value, node);
     }
     return functionNode;
   }
