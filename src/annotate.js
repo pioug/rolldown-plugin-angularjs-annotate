@@ -210,7 +210,9 @@ class Annotator {
   indexUnvisitedChildren(node, visited, visitedChild) {
     // Scope traversal intentionally skips metadata such as names, decorators, and type annotations.
     forEachChild(node, child => {
-      if (child !== visitedChild && !visited.includes(child)) this.indexSubtree(child, node);
+      if (child !== node.id && child !== visitedChild && !visited.includes(child)) {
+        this.indexSubtree(child, node);
+      }
     });
   }
 
