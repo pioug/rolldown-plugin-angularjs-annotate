@@ -180,7 +180,6 @@ class Annotator {
   }
 
   visitScope(node, scope, parent = null, reuseBlock = false) {
-    if (!isNode(node)) return;
     const type = node.type;
     const functionNode = this.indexNode(node, parent, type);
     this.nodeScopes.set(node, scope);
@@ -205,7 +204,7 @@ class Annotator {
         this.visitScope(parameter, functionScope, node);
       }
       if (node.body?.type === 'BlockStatement') this.visitScope(node.body, functionScope, node, true);
-      else this.visitScope(node.body, functionScope, node);
+      else if (node.body) this.visitScope(node.body, functionScope, node);
       this.indexUnvisitedChildren(node, new Set([...(node.params || []), node.body]));
       return;
     }
