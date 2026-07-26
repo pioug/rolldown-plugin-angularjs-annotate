@@ -168,10 +168,10 @@ class Annotator {
     walk(node, (current, currentParent) => this.indexNode(current, currentParent), new WeakSet(), parent);
   }
 
-  indexUnvisitedChildren(node, visited) {
+  indexUnvisitedChildren(node, visited, visitedChild) {
     // Scope traversal intentionally skips metadata such as names, decorators, and type annotations.
     forEachChild(node, child => {
-      if (!visited.includes(child)) this.indexSubtree(child, node);
+      if (child !== visitedChild && !visited.includes(child)) this.indexSubtree(child, node);
     });
   }
 
@@ -212,7 +212,7 @@ class Annotator {
       }
       if (node.body?.type === 'BlockStatement') this.visitScope(node.body, functionScope, node, true);
       else if (node.body) this.visitScope(node.body, functionScope, node);
-      this.indexUnvisitedChildren(node, [...(node.params || []), node.body]);
+      this.indexUnvisitedChildren(node, node.params || [], node.body);
       return;
     }
 
@@ -264,7 +264,7 @@ class Annotator {
       if (node.id) this.declare(classScope, node.id.name, node, node, 'class-name');
       if (node.superClass) this.visitScope(node.superClass, scope, node);
       this.visitScope(node.body, classScope, node);
-      this.indexUnvisitedChildren(node, [node.superClass, node.body]);
+      this.indexUnvisitedChildren(node, [node.superClass], node.body);
       return;
     }
 
