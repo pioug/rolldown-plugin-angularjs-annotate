@@ -1028,7 +1028,7 @@ class Annotator {
     const binding = bindingHint || this.bindingForValue(node) || null;
     const annotatedParent = this.annotatedArrayParent(node);
     if (annotatedParent && info.explicit) this.validateAnnotatedArray(annotatedParent, info);
-    if (this.isBlocked(node, binding)) {
+    if (this.isBlocked(node, binding, annotatedParent)) {
       this.processBlockedMethodContext(node, info.method);
       return;
     }
@@ -1317,11 +1317,12 @@ class Annotator {
     return isAnnotatedArray(parent) ? parent : null;
   }
 
-  isBlocked(node, binding) {
+  isBlocked(node, binding, annotatedParent) {
     const baseBinding = binding?.baseBinding || binding;
     if (this.blockedNodes.has(node) || (baseBinding && this.blockedBindings.has(baseBinding))) return true;
     if (binding?.write && this.blockedWrites.has(binding.write)) return true;
-    if (this.annotatedArrayParent(node)) return true;
+    if (annotatedParent === undefined) annotatedParent = this.annotatedArrayParent(node);
+    if (annotatedParent) return true;
     return false;
   }
 
