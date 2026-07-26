@@ -241,7 +241,7 @@ class Annotator {
     if (type === 'ForStatement' || type === 'ForInStatement' || type === 'ForOfStatement') {
       const loopScope = new Scope('block', scope, node, null);
       this.nodeScopes.set(node, loopScope);
-      forEachChild(node, child => this.visitScope(child, loopScope, node));
+      forEachChild(node, visitScopeChild, this, loopScope);
       return;
     }
 
@@ -274,7 +274,7 @@ class Annotator {
         const targetScope = node.kind === 'var' ? nearestFunctionScope(scope) : scope;
         this.declarePattern(targetScope, declarator.id, declarator.init, declarator, node.kind);
       }
-      forEachChild(node, child => this.visitScope(child, scope, node));
+      forEachChild(node, visitScopeChild, this, scope);
       return;
     }
 
@@ -286,7 +286,7 @@ class Annotator {
 
     if (type === 'Literal' ||
         (type === 'Identifier' && !node.typeAnnotation && !node.decorators?.length)) return;
-    forEachChild(node, child => this.visitScope(child, scope, node));
+    forEachChild(node, visitScopeChild, this, scope);
   }
 
   declarePattern(scope, pattern, value, declaration, kind) {
@@ -1767,7 +1767,11 @@ function isNode(value) {
   return value && typeof value === 'object' && typeof value.type === 'string';
 }
 
-function forEachChild(node, callback) {
+function visitScopeChild(child, _key, parent, annotator, scope) {
+  annotator.visitScope(child, scope, parent);
+}
+
+function forEachChild(node, callback, callbackContext, callbackState) {
   const prototype = Object.getPrototypeOf(node);
   const checkOwn = prototype !== Object.prototype && prototype !== null;
   for (const key in node) {
@@ -1775,9 +1779,9 @@ function forEachChild(node, callback) {
     if (key === 'loc' || key === 'start' || key === 'end') continue;
     const value = node[key];
     if (Array.isArray(value)) {
-      for (const child of value) if (isNode(child)) callback(child, key);
+      for (const child of value) if (isNode(child)) callback(child, key, node, callbackContext, callbackState);
     } else if (isNode(value)) {
-      callback(value, key);
+      callback(value, key, node, callbackContext, callbackState);
     }
   }
 }
