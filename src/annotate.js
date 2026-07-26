@@ -65,6 +65,7 @@ class Annotator {
     if (this.skipAnalysis) return;
 
     this.contextualCalls = this.calls.filter(isContextualCallCandidate);
+    this.regularCalls = this.options.explicitOnly ? [] : this.calls.filter(isImplicitAnnotationCandidate);
     this.regularInfoCache = new WeakMap();
 
     this.explicitActions = [];
@@ -657,7 +658,7 @@ class Annotator {
   }
 
   collectRegularTargets() {
-    for (const call of this.calls) {
+    for (const call of this.regularCalls) {
       const info = this.regularInfo(call);
       if (!info?.target || this.blockedNodes.has(call)) continue;
       if (info.method === 'component') this.processConfig(info.target, 'component');
