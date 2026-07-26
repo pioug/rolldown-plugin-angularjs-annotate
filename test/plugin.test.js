@@ -70,6 +70,24 @@ test('Transform consistently with standalone and native MagicString', () => {
   assert.ok(standalone.map);
 });
 
+test('Scan explicit comments from a native AST without matching literal text', () => {
+  const code = [
+    "const example = '/* @ngInject */';",
+    'function untouched(ignored) {}',
+    '/* @ngInject */',
+    'function marked(dep) {}',
+  ].join('\n');
+  const magicString = new MagicString(code);
+  const result = transform(angularjsAnnotate(), code, 'test.js', {
+    ast: parseSync('test.js', code, { sourceType: 'unambiguous' }).program,
+    magicString,
+  });
+
+  assert.equal(result.code, magicString);
+  assert.doesNotMatch(result.code.toString(), /untouched\.\$inject/);
+  assert.match(result.code.toString(), /marked\.\$inject = \["dep"\]/);
+});
+
 test('Map generated code back to its original positions', () => {
   const code = [
     "angular.module('x').run(function($http) {",

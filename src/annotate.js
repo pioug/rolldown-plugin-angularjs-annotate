@@ -34,7 +34,13 @@ class Annotator {
     this.options = options || {};
     this.moduleRegexp = normalizeModuleRegexp(this.options.regexp);
 
-    this.nodes = [];
+    this.comments = normalizeComments(this.options.comments);
+    this.commentProtectedNodes = this.comments == null && /\/[/*]/.test(this.code) ? [] : null;
+    const hasExplicitComment = this.comments ?
+      this.comments.some(comment => commentAnnotation(comment.value) != null) :
+      this.code.includes('@ngInject') || this.code.includes('@ngNoInject');
+    this.explicitCandidateNodes = hasExplicitComment ? [] : null;
+    this.writeAndAnnotationNodes = [];
     this.calls = [];
     this.explicitNodes = [];
     this.hasIndexedCandidate = false;
@@ -47,7 +53,8 @@ class Annotator {
     this.bindingByDeclaration = new WeakMap();
     this.rootScope = this.buildScopes();
 
-    this.comments = normalizeComments(this.options.comments) || scanComments(this.code, this.nodes);
+    this.comments ||= this.commentProtectedNodes ? scanComments(this.code, this.commentProtectedNodes) : [];
+    this.commentProtectedNodes = null;
     this.skipAnalysis = !this.hasAnnotationCandidates();
     if (this.skipAnalysis) return;
 
@@ -103,8 +110,27 @@ class Annotator {
   }
 
   indexNode(node, parent) {
-    this.nodes.push(node);
     if (parent) this.parents.set(node, parent);
+
+    if (this.explicitCandidateNodes && explicitPriority(node) < 100) {
+      this.explicitCandidateNodes.push(node);
+    }
+    if (this.commentProtectedNodes &&
+        (node.type === 'Literal' || node.type === 'TemplateElement' || node.type === 'JSXText')) {
+      this.commentProtectedNodes.push(node);
+    }
+    switch (node.type) {
+      case 'AccessorProperty':
+      case 'AssignmentExpression':
+      case 'FieldDefinition':
+      case 'ForInStatement':
+      case 'ForOfStatement':
+      case 'MethodDefinition':
+      case 'PropertyDefinition':
+      case 'UpdateExpression':
+        this.writeAndAnnotationNodes.push(node);
+        break;
+    }
 
     if (isFunction(node)) {
       this.explicitNodes.push(node);
@@ -322,7 +348,7 @@ class Annotator {
   }
 
   collectBindingWrites() {
-    for (const node of this.nodes) {
+    for (const node of this.writeAndAnnotationNodes) {
       if (node.type === 'AssignmentExpression') {
         if (node.left?.type === 'Identifier' && node.operator === '=') {
           const binding = this.bindingFor(node.left);
@@ -437,7 +463,7 @@ class Annotator {
   }
 
   collectExistingAnnotations() {
-    for (const node of this.nodes) {
+    for (const node of this.writeAndAnnotationNodes) {
       if (node.type === 'AssignmentExpression' && isInjectMember(node.left)) {
         const object = unwrap(node.left.object);
         if (object?.type === 'Identifier') {
@@ -504,7 +530,7 @@ class Annotator {
   }
 
   explicitCandidates() {
-    const result = this.nodes.filter(node => explicitPriority(node) < 100);
+    const result = [...this.explicitCandidateNodes];
     result.sort((left, right) => explicitStart(left) - explicitStart(right) ||
       explicitPriority(left) - explicitPriority(right) || right.end - left.end);
     return result;
@@ -1514,14 +1540,14 @@ function normalizeComments(comments) {
   })).sort((left, right) => left.start - right.start);
 }
 
-function scanComments(code, nodes) {
+function scanComments(code, protectedNodes) {
   const regexp = /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g;
   const firstMatch = regexp.exec(code);
   if (!firstMatch) return [];
 
-  const protectedRanges = nodes.filter(node =>
-    node.type === 'Literal' || node.type === 'TemplateElement' || node.type === 'JSXText'
-  ).map(node => [node.start, node.end]).sort((left, right) => left[0] - right[0]);
+  const protectedRanges = protectedNodes
+    .map(node => [node.start, node.end])
+    .sort((left, right) => left[0] - right[0]);
   const comments = [];
   let rangeIndex = 0;
   for (let match = firstMatch; match; match = regexp.exec(code)) {
