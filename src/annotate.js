@@ -24,7 +24,7 @@ const CONTEXTUAL_METHODS = new Set([
   'decorator', 'factory', 'invoke', 'open', 'provider', 'push', 'register', 'service',
   'setNestedState', 'show', 'state', 'when'
 ]);
-const DEFAULT_MODULE_REGEXP = /^[a-zA-Z0-9_$\.\s]+$/;
+const DEFAULT_MODULE_REGEXP = /^[a-zA-Z0-9_$.\s]+$/;
 
 module.exports = function annotate(program, code, magicString, options = {}) {
   const annotator = new Annotator(program, code, magicString, options);
@@ -40,12 +40,11 @@ class Annotator {
     this.moduleRegexp = normalizeModuleRegexp(this.options.regexp);
 
     this.comments = normalizeComments(this.options.comments);
-    const mayHaveExplicitComment = this.comments ?
+    const hasExplicitComment = this.comments ?
       this.comments.some(comment => comment.annotation != null) :
       this.code.includes('@ngInject') || this.code.includes('@ngNoInject');
-    this.commentProtectedNodes = this.comments == null && mayHaveExplicitComment &&
+    this.commentProtectedNodes = this.comments == null && hasExplicitComment &&
       /\/[/*]/.test(this.code) ? [] : null;
-    const hasExplicitComment = mayHaveExplicitComment;
     this.explicitCandidateNodes = hasExplicitComment ? [] : null;
     this.writeNodes = [];
     this.existingAnnotationNodes = [];
@@ -217,8 +216,7 @@ class Annotator {
   }
 
   hasAnnotationCandidates() {
-    if (this.comments.some(comment => comment.annotation != null)) return true;
-    return this.hasIndexedCandidate;
+    return this.hasIndexedCandidate || this.comments.some(comment => comment.annotation != null);
   }
 
   buildScopes() {
@@ -596,7 +594,7 @@ class Annotator {
   isTrivia(start, end) {
     let cursor = start;
     while (cursor < end) {
-      const whitespace = /^[\s]*/.exec(this.code.slice(cursor, end))[0].length;
+      const whitespace = /^\s*/.exec(this.code.slice(cursor, end))[0].length;
       cursor += whitespace;
       if (cursor >= end) return true;
       const comment = this.commentByStart.get(cursor);
@@ -1103,7 +1101,7 @@ class Annotator {
     if (methods.has(method)) return;
     methods.add(method);
     if (method === 'provider') this.scanProvider(node);
-    if (method === 'directive') this.scanDirective(node);
+    else this.scanDirectiveFunction(node, new WeakSet());
   }
 
   scanProvider(root) {
@@ -1123,10 +1121,6 @@ class Annotator {
         }
       }
     });
-  }
-
-  scanDirective(root) {
-    this.scanDirectiveFunction(root, new WeakSet());
   }
 
   scanDirectiveFunction(root, trail) {
@@ -1519,7 +1513,6 @@ class Annotator {
 
 class Scope {
   constructor(type, parent, node, body) {
-    this.type = type;
     this.parent = parent;
     this.node = node;
     this.body = body;
@@ -1617,7 +1610,7 @@ function commentAnnotation(value) {
   value = String(value);
   if (!value.includes('@ng')) return null;
   for (const line of value.split(/\r?\n/)) {
-    const normalized = line.replace(/^[\s*]*/, '').replace(/[\s*]*$/, '').trim();
+    const normalized = line.replace(/^[\s*]*/, '').replace(/[\s*]*$/, '');
     if (normalized === '@ngInject') return true;
     if (normalized === '@ngNoInject') return false;
   }
@@ -1630,8 +1623,7 @@ function explicitPriority(node) {
   if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') return 2;
   if (node.type === 'MethodDefinition' || node.type === 'Property') return 3;
   if (node.type === 'ObjectExpression') return 4;
-  if (WRAPPER_TYPES.has(node.type)) return 5;
-  if (node.type === 'CallExpression') return 5;
+  if (node.type === 'CallExpression' || WRAPPER_TYPES.has(node.type)) return 5;
   if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression' || node.type === 'ClassExpression') return 6;
   if (node.type === 'Identifier') return 7;
   return 100;
@@ -1793,7 +1785,7 @@ function isNode(value) {
   return value && typeof value === 'object' && typeof value.type === 'string';
 }
 
-function visitScopeChild(child, _key, parent, annotator, scope) {
+function visitScopeChild(child, parent, annotator, scope) {
   annotator.visitScope(child, scope, parent);
 }
 
@@ -1807,18 +1799,18 @@ function forEachChild(node, callback, callbackContext, callbackState) {
     if (Array.isArray(value)) {
       for (const child of value) {
         if (child && typeof child === 'object' && typeof child.type === 'string') {
-          callback(child, key, node, callbackContext, callbackState);
+          callback(child, node, callbackContext, callbackState);
         }
       }
     } else if (value && typeof value === 'object' && typeof value.type === 'string') {
-      callback(value, key, node, callbackContext, callbackState);
+      callback(value, node, callbackContext, callbackState);
     }
   }
 }
 
-function walk(node, visitor, seen = new WeakSet(), parent = null, key = null) {
+function walk(node, visitor, seen = new WeakSet(), parent = null) {
   if (!isNode(node) || seen.has(node)) return;
   seen.add(node);
-  visitor(node, parent, key);
-  forEachChild(node, (child, childKey) => walk(child, visitor, seen, node, childKey));
+  visitor(node, parent);
+  forEachChild(node, child => walk(child, visitor, seen, node));
 }
