@@ -1,6 +1,6 @@
 {
   "name": "rolldown-plugin-angularjs-annotate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AngularJS dependency injection annotations for Rolldown without a Babel transform layer",
   "author": "Gilles Piou",
   "license": "MIT",
